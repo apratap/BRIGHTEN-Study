@@ -1,0 +1,492 @@
+---
+title: '[BRIGHTEN Study](http://brightenstudy.com/study-description.html) Data Overview'
+author: "Abhishek Pratap @ UW / Sage Bionetworks"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    always_allow_html: yes
+    fig_height: 10
+    fig_width: 15
+  pdf_document: default
+---
+
+--------
+
+```{r setup, include=FALSE}
+library(data.table)
+library(gdata)
+library(synapseClient)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(knitr)
+library(parcoords)
+library(xts)
+library(dygraphs)
+library("printr")
+library("sjPlot")
+
+synapseLogin()
+
+knitr::opts_chunk$set(echo = F,  message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
+
+source("~/dev/apRs/plotting_helpers.R")
+source("~/dev/apRs/expression_heatmap.R")
+source("~/dev/apRs/dataExploration_plots.R")
+```
+
+
+```{r readData, cache=T}
+#PHQ9
+phq9 <- read.xls(synGet('syn5908857')@filePath)
+selcols <- paste0('ph', seq(1,9))
+phq9['sum_phq9'] = rowSums(phq9[, selcols])
+phq9$sent_time_utc <- as.POSIXct(phq9$sent_time_utc,tz='UTC')
+phq9$response_utc <- as.POSIXct(phq9$response_utc,tz='UTC')
+
+phq2 <- fread(synGet('syn5908863')@filePath, data.table=F)
+phq2$sent_time_utc <- as.POSIXct(phq2$sent_time_utc, tz='UTC', format="%m/%d/%y %H:%M")
+phq2$response_utc <- as.POSIXct(phq2$response_utc, tz='UTC', format="%m/%d/%y %H:%M")
+
+#Study metadata
+study_metadata <- read.xls(synGet('syn5908560')@filePath)
+
+#add user-id to study metadata table
+to_merge <- phq9[,c('brightenid','user_id')]
+to_merge <- to_merge[!duplicated(to_merge),]
+study_metadata <- merge(study_metadata, to_merge, all.x=T)
+
+#GingerIO data
+gingerio_data <- fread(synGet('syn5908849')@filePath, data.table = F)
+gingerio_metadata <- fread(synGet('syn5908850')@filePath, data.table = F)
+colnames(gingerio_metadata) <- gsub(' ', '_',colnames(gingerio_metadata))
+colnames(gingerio_data) <- gsub(' ', '_',colnames(gingerio_data))
+```
+
+
+##### Data Types
+* Longitudinal
+    + passive data collected through ginger.io app [data](https://www.synapse.org/#!Synapse:syn5908849)
+    + public health questionnaire [(PHQ9)](http://www.cqaimh.org/pdf/tool_phq9.pdf) [data](https://www.synapse.org/#!Synapse:syn5908857)
+    + public health questionnaire [(PHQ2)](http://www.cqaimh.org/pdf/tool_phq2.pdf) [data](https://www.synapse.org/#!Synapse:syn5908863)
+
+    
+```{r fig.align='center'}
+passive_vars <- data.frame( phoneUsage = c("SMS length", "SMS count",   "Call count","Call duration", "Unreturned calls"),
+                            Other = c("Mobility", "Mobility radius", "Interaction diversity","Missed interactions","Aggregate communication"))
+kable(passive_vars, row.names=F, align='l')
+```
+
+
+-------------------
+
+##### Data Summary
+* users - `r length(unique(gingerio_metadata$user_id))`
+* data points in passive data - `r nrow(gingerio_data)`
+* number of phq9 surveys - `r nrow(phq9)`
+* number of phq2 surveys - `r nrow(phq2)`
+
+
+##### Data Filtering
+
+1. Using only the users for the following subgroups 
+   Akili = GREEN | iPST = BLUE | Health Tips = ORANGE
+
+2. rows where all passive data columns are NA
+
+```{r}
+selected_study_arms = c('GREEN', 'BLUE', 'ORANGE')
+pattern = paste(selected_study_arms, collapse='|')
+gingerio_metadata <- gingerio_metadata[grepl(pattern, gingerio_metadata$`Participant_ID`),]
+selected_users <- unique(gingerio_metadata$user_id)
+
+#keep only relevant users in ginger data
+gingerio_data <- gingerio_data %>% dplyr::filter(user_id %in% selected_users)
+
+#filter NA rows
+rows_to_keep <- apply(gingerio_data[,-c(1,2,3)], 1, function(x) sum(is.na(x)) != 10 )
+gingerio_data <- gingerio_data[rows_to_keep,]
+
+#keep only relevant users in PHQ9 data
+phq9 <- phq9 %>% dplyr::filter(user_id %in% selected_users) 
+
+#Keep only those responses which are in STUDY ARM
+# GREEN BLUE ORANGE
+phq9['study_arm'] <- gsub('-.*','',phq9$brightenid)
+phq9 <- phq9 %>% dplyr::filter(study_arm %in% selected_study_arms )
+
+#keep only relevant users in PHQ2 data
+phq2 <- phq2 %>% dplyr::filter(user_id %in% selected_users)
+
+#calculate sum of PHQ2 scores
+phq2['sum_PHQ2'] = phq2[,7] + phq2[,8]
+
+#add study grp to PHQ2
+phq2 <- merge(phq2, study_metadata[,c('user_id','Studygroup')])
+phq2 <- phq2 %>% dplyr::mutate(Studygroup = as.character(Studygroup)) %>%
+  filter(Studygroup != '')
+
+#convert timestamp to POSIX class
+gingerio_data <- gingerio_data %>% dplyr::mutate(end=as.POSIXct(end, tz="America/Los_Angeles",usetz=TRUE), start= as.POSIXct(start, tz="America/Los_Angeles",usetz=TRUE)) %>%
+  mutate(start_utc =format(start, tz='UTC'))
+
+### Add study arm info in ginger data
+temp_df <- phq9[,c('user_id','study_arm')]
+temp_df <- temp_df[!duplicated(temp_df),]
+gingerio_data <- merge(gingerio_data, temp_df, all.x=T)
+gingerio_data <- gingerio_data %>% mutate(study_arm = as.factor(study_arm))
+
+gingerio_data$study_arm <- plyr::revalue(gingerio_data$study_arm, 
+                                         replace = c('BLUE' = 'iPST',
+                                                     'ORANGE' = 'Health Tips',
+                                                     'GREEN' = 'Akili'))
+
+phq2$study_arm <- plyr::revalue(phq2$Studygroup, 
+                                 replace = c('BLUE' = 'iPST',
+                                             'ORANGE' = 'Health Tips',
+                                             'GREEN' = 'Akili'))
+
+phq9$study_arm <- plyr::revalue(phq9$study_arm, 
+                                 replace = c('BLUE' = 'iPST',
+                                             'ORANGE' = 'Health Tips',
+                                             'GREEN' = 'Akili'))
+
+study_metadata$study_arm <- plyr::revalue(study_metadata$Studygroup, 
+                                 replace = c('BLUE' = 'iPST',
+                                             'ORANGE' = 'Health Tips',
+                                             'GREEN' = 'Akili'))
+```
+
+```{r}
+### Binning participants into weeks in study
+
+#ginger data - weeks in study
+per_user_ginger_study_start <- gingerio_data %>% group_by(user_id) %>% summarise(study_start = min(start))
+gingerio_data <- merge(gingerio_data, per_user_ginger_study_start)
+gingerio_data <- gingerio_data %>% dplyr::mutate(day_in_study = (as.numeric(start - study_start) %/% (24*3600)) + 1) %>% mutate(week_in_study = (day_in_study %/% 7) + 1) 
+
+#PHQ2 - weeks in study
+per_user_phq2_study_start <- phq2 %>% group_by(user_id) %>% summarise(study_start_utc = min(response_utc))
+phq2 <- merge(phq2, per_user_phq2_study_start)
+phq2 <- phq2 %>% dplyr::mutate(day_in_study = (as.numeric(response_utc - study_start_utc) %/% (24*3600)) + 1) %>% mutate(week_in_study = (day_in_study %/% 7) + 1) 
+
+#PHQ9 - weeks in study
+per_user_phq9_study_start <- phq9 %>% group_by(user_id) %>% summarise(study_start_utc = min(response_utc))
+phq9 <- merge(phq9, per_user_phq9_study_start)
+phq9 <- phq9 %>% dplyr::mutate(day_in_study = (as.numeric(response_utc - study_start_utc) %/% (24*3600)) + 1) %>% mutate(week_in_study = (day_in_study %/% 7) + 1) 
+```
+
+##### Data Summary - post filtering
+* _Ginger.io_
+    + users - `r length(unique(gingerio_data$user_id))`
+    + data points in passive data - `r nrow(gingerio_data)`
+* number of phq9 surveys - `r nrow(phq9)`
+* number of phq2 surveys - `r nrow(phq2)`
+
+
+#### Study Participation
+_number of weeks each participant spent in the study_
+```{r fig.height=3, fig.width=5, fig.align='center'}
+study_participation <- gingerio_data %>% group_by(user_id) %>% summarise(weeks=length(unique(week_in_study)))
+hist(study_participation$weeks, breaks=30,ylab='#users', xlab='week in study', main='')
+```
+
+
+##### Summary Distributions 
+```{r, fig.height=4, fig.width=10}
+tmp_phq9 <- phq9 %>% filter(week_in_study <= 12) %>% mutate(week_in_study = factor(week_in_study))
+phq9_density <- ggplot(data=tmp_phq9, aes(x=sum_phq9, fill=study_arm)) + geom_density(alpha=.7) + theme_bw() + xlab('Sum PHQ9 scores') + scale_fill_manual(values=c("#3182bd", "#31a354", "#e66101")) + ggtitle('PHQ9 scores stratified by study arm')
+
+tmp_phq2 <- phq2 %>% filter(week_in_study <= 12) %>% mutate(week_in_study = factor(week_in_study))
+phq2_density <- ggplot(data=tmp_phq2, aes(x=sum_PHQ2, fill=Studygroup)) + geom_density(alpha=.7) + theme_bw() + xlab('Sum PHQ2 scores') + scale_fill_manual(values=c("#3182bd", "#31a354", "#e66101")) + ggtitle('PHQ2 scores stratified by study arm')
+grid_arrange_shared_legend(list(phq9_density,phq2_density), ncol=2)
+```
+
+Cumulative Density Distribution
+
+```{r,  fig.height=4, fig.width=10}
+p1 <- ggplot(data=tmp_phq9, aes(x=sum_phq9, color=study_arm)) +stat_ecdf()
+p1 <- p1 + theme_bw() + xlab('Sum PHQ9 scores') + scale_color_manual(values=c("#3182bd", "#31a354", "#e66101")) + ggtitle('Cumulative PHQ9 scores stratified by study arm')
+p1 <- p1 + ylab('percent')
+
+p2 <- ggplot(data=tmp_phq2, aes(x=sum_PHQ2, color=study_arm)) +stat_ecdf()
+p2 <- p2 + theme_bw() + xlab('Sum PHQ2 scores') + scale_color_manual(values=c("#3182bd", "#31a354", "#e66101")) + ggtitle('Cumulative PHQ2 scores stratified by study arm')
+p2 <- p2 + ylab('percent')
+
+grid_arrange_shared_legend(list(p1,p2), ncol=2)
+```
+
+Comparing PHQ9 to PHQ2 
+
+```{r, fig.height=4, fig.width=10}
+### First create a data frame which lines UP 
+# 1. Passive Data
+# 2. PHQ2 
+# 3. PHQ9
+# 4. Study Metadata
+
+tmp_phq2 <- phq2 %>% dplyr::mutate(phq2_response_date_lessOne = as.Date(response_utc) - 1) %>% mutate(phq2_response_date = as.Date(response_utc)) %>% 
+  dplyr::select(user_id, sum_PHQ2, Studygroup, week_in_study, day_in_study, 
+         phq2_response_date_lessOne, phq2_response_date)
+
+gingerio_data <- gingerio_data %>% dplyr::mutate(start_date_utc = as.Date(start_utc))
+
+combined_data <- merge(tmp_phq2, gingerio_data, by.x=c('user_id','phq2_response_date_lessOne'),
+      by.y=c('user_id','start_date_utc'))
+
+combined_data <- combined_data %>% 
+  mutate(phq2_response_date_utc = phq2_response_date,
+         passive_data_date_utc = as.Date(start_utc),
+         week_in_study = week_in_study.y)
+
+combined_data$week_in_study.x <- NULL
+combined_data$day_in_study.x <- NULL
+combined_data$week_in_study.y <- NULL
+combined_data$day_in_study.x <- NULL
+combined_data$start <- NULL
+combined_data$end <- NULL
+combined_data$study_start <- NULL
+combined_data$start_utc <- NULL
+combined_data$Studygroup <- NULL
+
+combined_data['PHQ2_depression'] = NA
+combined_data$PHQ2_depression[combined_data$sum_PHQ2 <= 5] = 'low (PHQ2 <=5)'
+combined_data$PHQ2_depression[combined_data$sum_PHQ2 > 5] = 'high (PHQ2 >5)'
+combined_data$PHQ2_depression <- as.factor(combined_data$PHQ2_depression)
+combined_data <- combined_data %>% filter(week_in_study <= 12) %>% 
+  mutate(week_in_study = factor(week_in_study))
+
+tmp_phq9 <- phq9 %>% select(user_id, week_in_study, sum_phq9, study_arm) %>%
+  mutate(week_in_study = factor(week_in_study))
+
+combined_data <- merge(combined_data, tmp_phq9, by=c('user_id','week_in_study', 'study_arm'), all.x=T)
+
+
+### Add study demographics data
+combined_data <- merge(combined_data, study_metadata)
+
+## Remove cols
+drop_cols <- c("passive_data_date_utc", "day_in_study.y", 
+               "phq2_response_date_lessOne", "phq2_response_date",
+               "phq2_response_date_utc", "Studygroup", "brightenid",
+               "hispanic", "referral", "specreferral",
+               "ordinalincome", "race", "phq91", "phq92", "phq93", "phq94",
+               "phq96", "phq98", "phq910", "phq912", "otherhelp", "book", "group",
+               "therapist", "dropout", "bonuscohort", "evoplays",
+               "pstplays","evoactivity","gingeractivity", "minority", "primary",
+               "pstactivity", "aceactivity", "evoactivity", "study_arm", "sideation",    "survivaldays", "income1")
+
+combined_data <- combined_data[, (! colnames(combined_data) %in% drop_cols)]
+
+p1 <- ggplot(data=combined_data, aes(x=as.factor(sum_phq9), y=sum_PHQ2)) + geom_boxplot()
+p1 <- p1 + theme_bw() + xlab('Sum PHQ9 scores')
+p1
+```
+
+--------------------
+
+```{r, fig.height=4, fig.width=10}
+xlabs <- paste(levels(tmp_phq9$week_in_study),"\n(N=",table(tmp_phq9$week_in_study),")",sep="")
+phq9_boxplot <- ggplot(data=tmp_phq9, aes(y=sum_phq9, x=week_in_study, fill=study_arm)) + geom_boxplot(alpha=.7) + theme_bw() + ylab('Sum PHQ9 scores') + xlab('Week in study') + ggtitle('PHQ9 scores stratified by study week') + scale_x_discrete(labels=xlabs) + scale_fill_manual(values=c("#3182bd", "#31a354", "#e66101"))
+phq9_boxplot
+```
+
+-------------------
+
+#### Passive Data
+
+The density histograms for the passive data shows that the three randomized arms of the study have similar overall behavior  
+```{r, echo=F, warning=F, fig.width=10, fig.height=6}
+tmp <- gingerio_data %>% filter(!is.na(study_arm) & week_in_study <= 12) %>%
+  mutate(week_in_study = factor(week_in_study))
+cols_to_plot <- c('SMS_Length','Unreturned_Calls','Call_Duration','Mobility','Interaction_Diversity','Missed_Interactions','SMS_Count','Mobility_Radius','Call_Count')
+passive_vars_density_plots <- lapply(cols_to_plot,function(col,fill='study_arm'){
+  ggplot(data=tmp, aes_string(x=paste0("log10(",col,")"), fill=fill)) + geom_density(alpha=.6) + theme_bw() + xlab(paste0('log10(',col,')')) + scale_fill_manual(values=c("#3182bd", "#31a354", "#e66101")) + xlab(paste0('log10(',col,')')) + theme(legend.position="none")
+})
+multiplot(plotlist = passive_vars_density_plots, cols=3)
+```
+
+----------
+
+##### Correlation Analysis 
+For downstream analysis it is probably ok to remove the following variables.
+  
+  1. SMS_Length, SMS_Count & Interaction Diversity as both have high corrleation with Aggregate Communication
+  2. Unreturned Calls info is captured by Missed Interactions
+```{r, fig.height=12, figure.width=15}
+d <- gingerio_data[,-c(1:3)]
+d$start_utc <- NULL
+d$study_start <- NULL
+d$day_in_study <- NULL
+d$week_in_study <- NULL
+d$study_arm <- NULL
+d$end <- NULL
+d$start_date_utc <- NULL
+corPlot(d, cex.labels=1)
+```
+
+---------------
+
+##### Missing Data - GingerIO Passive Data
+Due to differences in phone operating system, iphone vs android we have missing features for passive data coming from iPhones
+ 
+ *  The barplot on the left hand side shows the amount of missing/imputed values in each variable. 
+ 
+ * In the aggregation plot on the right hand side, all existing combinations of missing/imputed(red) and non-missing values(blue) in the observations are visualized
+
+```{r, fig.width=8, fig.height=4}
+library("mice")
+library("VIM")
+cols_to_remove <- c('user_id', 'start', 'end', 'start_utc', 'study_arm' ,'study_start' ,'day_in_study', 'week_in_study', 'start_date_utc' )
+tmp <- gingerio_data
+tmp <- tmp[,!colnames(tmp) %in% cols_to_remove]
+colnames(tmp) <- c('SMS-len', 'UnretCalls' , 'CallDur', 'Mobility', 'InteracDiv', 'MissInterc' , 'AggComm', 'SMSCount' , 'MobRadius' , 'CallCount')
+aggr_plot <- aggr(tmp, col=c('skyblue','#fc9272', 'grey50'), numbers=TRUE, sortVars=TRUE, ylab=c("Histogram of missing data","Pattern"), cex.axis=.6, digits=2, plot=T)
+```
+
+----------------
+
+#### Study timeline
+_exploratory - since this is a rolling enrollment study the following timeseries chart only shows the overall PHQ9 scores during the course of the whole study. It doesn't indicate the pattern for users from week 1 to 12_
+
+```{r,echo=F, eval=T, fig.width=8, fig.height=4}
+phq9_Akili <- phq9[grepl('Akili', phq9$study_arm),]
+phq9_iPST <- phq9[grepl('iPST', phq9$study_arm),]
+phq9_healthTips <- phq9[grepl('Health Tips', phq9$study_arm),]
+
+iPST <- xts(phq9_iPST$sum_phq9, phq9_iPST$sent_time_utc)
+Health_Tips <- xts(phq9_healthTips$sum_phq9, phq9_healthTips$sent_time_utc)
+Akili <- xts(phq9_Akili$sum_phq9, phq9_Akili$sent_time_utc)
+
+dygraph(cbind(iPST=iPST,Health_Tips=Health_Tips,Akili=Akili), 
+        main = "PHQ9 survey scores in 3 arms") %>%
+  dyRoller(rollPeriod = 100) %>%  
+  dyOptions(fillGraph = TRUE, fillAlpha = 0.4) %>%
+  dyAxis("y", label = "sum PHQ9 scores") %>%
+  dyOptions(axisLineWidth = 1.5, fillGraph = TRUE)
+```
+
+--------------------
+
+```{r, plot.height=15, plot.width=10}
+#per user test 
+tmp_ginger_io <- gingerio_data %>% filter(week_in_study <= 12)
+tmp_ginger_io <- tmp_ginger_io[complete.cases(tmp_ginger_io),] %>%
+  mutate(user_id = as.character(user_id))
+users <- unique(tmp_ginger_io$user_id)
+user_level_tests <- ldply(.data=users, .fun=function(user){
+  d <- tmp_ginger_io %>% filter(user_id == user)
+  lm.fit <- lm(week_in_study ~ Aggregate_Communication +  Missed_Interactions + Call_Duration + Mobility_Radius + Mobility, data=d )
+  lmSummary <-  summary(lm.fit)
+  lmCoeff <- as.data.frame(lmSummary$coefficients)
+  lmCoeff['var'] = rownames(lmCoeff)
+  lmCoeff['user_id'] = user
+  lmCoeff
+})
+
+user_level_tests <- dcast(data=user_level_tests, user_id ~ var, value.var='Pr(>|t|)')
+user_level_tests$`(Intercept)` <- NULL
+user_level_tests['num_imp_variables'] <- apply(user_level_tests, 1, function(x)  sum(x < .05))
+selected_users <- (user_level_tests %>% arrange(desc(num_imp_variables)) %>% .$user_id)[1:10]
+```
+
+
+```{r}
+temp_user_plots <- function(users){
+  tmp_ginger_io_df <- gingerio_data %>% filter(week_in_study <= 12 & user_id %in% users) %>% mutate(week_in_study = as.factor(week_in_study))
+  tmp_phq9 <- phq9 %>% filter(week_in_study <= 12 & user_id %in% users)
+  tmp_phq2 <- phq2 %>% filter(week_in_study <= 12 & user_id %in% users)
+  
+  #PHQ plots 
+  phq9_week <- ggplot(data=tmp_phq9 , aes(x=factor(week_in_study), y=sum_phq9)) + geom_boxplot(width=.5) + xlab('week in study') + theme_bw()
+ phq2_week <- ggplot(data=tmp_phq2 , aes(x=factor(week_in_study), y=sum_PHQ2)) + geom_boxplot(width=.5) + xlab('week in study') + theme_bw()
+ 
+ #passive data plots
+  p1  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Mobility_Radius))) + geom_boxplot() + theme_bw()
+  p2  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Call_Count))) + geom_boxplot() + theme_bw()
+  p3  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(SMS_Count))) + geom_boxplot() + theme_bw()
+  p4  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Call_Duration))) + geom_boxplot() + theme_bw()
+  multiplot(plotlist=list(phq9_week,p3,p2,phq2_week,p1,p4), cols=2)
+}
+```
+
+### Participant Specific plots (N=1)
+Choosen using a simple peronsalized linear model for each user
+
+####Participant 1 - 67633
+```{r, fig.width=8, fig.height=6}
+temp_user_plots('67633') 
+```
+
+####Participant 2 - 16261
+```{r, fig.width=8, fig.height=6}
+temp_user_plots('16261') 
+```
+
+```{r, fig.width=8, fig.height=6, eval=F}
+####Participant 3 - 34727
+temp_user_plots('34727') 
+```
+
+```{r, fig.width=8, fig.height=6, eval=F}
+####Participant 5 - 68974
+temp_user_plots('68974') 
+```
+
+
+<!-- ### Comparing PHQ2 - Ginger.io Passive data -->
+
+<!-- Depression stage  -->
+<!--     * low - sum PHQ2 <= 5  -->
+<!--     * high - sum PHQ2 > 5 -->
+
+```{r fig.height=6, fig.width=10, eval=F}
+d <-  combined_data %>%
+  mutate(week_in_study = as.factor(week_in_study))
+p1 <- ggplot(data=d, aes(x=week_in_study, y=log10(Mobility+.0001), fill=PHQ2_depression)) + geom_boxplot() + theme_bw()
+p2 <- ggplot(data=d, aes(x=week_in_study, y=log10(SMS_Length+.0001),fill=PHQ2_depression)) + geom_boxplot() + theme_bw()
+p4 <- ggplot(data=d, aes(x=week_in_study, y=log10(Call_Duration), fill=PHQ2_depression)) + geom_boxplot() + theme_bw()
+p5 <- ggplot(data=d, aes(x=week_in_study, y=log10(SMS_Count), fill=PHQ2_depression)) + geom_boxplot() + theme_bw()
+p6 <- ggplot(data=d, aes(x=week_in_study, y=log10(Call_Count), fill=PHQ2_depression)) + geom_boxplot() + theme_bw()
+multiplot(plotlist=list(p1,p4,p5,p6), cols=2)
+```
+
+
+### Passive Data - select users based on a linear model. 
+
+participants that show significant difference in passive data features across 12 weeks of their study participation
+
+```{r, fig.height=6, fig.width=10}
+
+tmp  <- combined_data %>% filter(user_id %in% selected_users) %>%
+  dplyr::select(PHQ2_depression, sum_PHQ2, week_in_study, SMS_Length, Unreturned_Calls, Call_Count, Mobility, Call_Duration ) %>% mutate(SMS_Length = log10(SMS_Length),
+      Call_Duration = log10(Call_Duration),
+      Call_Count = log10(Call_Count))
+
+parcoords(tmp, rownames = F,reorderable = T ,brushMode = "1D-axes-multi", queue=T, alpha=.3,axisDots=F,color=list(colorBy="PHQ2_depression",
+colorScale = htmlwidgets::JS("d3.scale.category10()")))
+```
+
+
+
+
+```{r}
+#### Upload data to Synapse
+drop_cols <- c('ph1','ph2', 'ph3', 'ph4', 'ph5', 'ph6', 'ph7', 'ph8', 'ph9', 'phdis',
+               'week')
+phq9 <- phq9[, !(colnames(phq9) %in% drop_cols)]
+
+
+write.table(combined_data, file="brighten_integrated_data.tsv",
+            sep="\t", quote=F, col.names = T, row.names = F)
+
+tmp = synStore(File("brighten_integrated_data.tsv", parentId = 'syn7211114'),
+               used = c('syn5908857', 'syn5908863', 'syn5908849', 'syn5908560'),
+               executed = "dfd")
+      
+
+```
+
