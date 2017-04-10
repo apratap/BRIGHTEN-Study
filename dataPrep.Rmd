@@ -29,58 +29,58 @@ phq9['sum_phq9'] = rowSums(phq9[, selcols])
 phq9$sent_time_utc <- as.POSIXct(phq9$sent_time_utc,tz='UTC')
 phq9$response_utc <- as.POSIXct(phq9$response_utc,tz='UTC')
 
-
 phq2 <- fread(synGet('syn5908863')@filePath, data.table=F)
 phq2$sent_time_utc <- as.POSIXct(phq2$sent_time_utc, tz='UTC', format="%m/%d/%y %H:%M")
 phq2$response_utc <- as.POSIXct(phq2$response_utc, tz='UTC', format="%m/%d/%y %H:%M")
 
 #Study metadata
 study_metadata <- read.xls(synGet('syn5908560')@filePath)
-
-#add user-id to study metadata table
-to_merge <- phq9[,c('brightenid','user_id')]
-to_merge <- to_merge[!duplicated(to_merge),]
-study_metadata <- merge(study_metadata, to_merge, all.x=T)
+study_metadata <- study_metadata %>% dplyr::mutate(brightenid = as.character(brightenid))
 
 #GingerIO data
 gingerio_data <- fread(synGet('syn5908849')@filePath, data.table = F)
 gingerio_metadata <- fread(synGet('syn5908850')@filePath, data.table = F)
 colnames(gingerio_metadata) <- gsub(' ', '_',colnames(gingerio_metadata))
 colnames(gingerio_data) <- gsub(' ', '_',colnames(gingerio_data))
+
+
+#add user-id to study metadata table
+to_merge <- gingerio_metadata[, c('Participant_ID', 'user_id')]
+to_merge <- to_merge[!duplicated(to_merge),]
+study_metadata <- merge(study_metadata, to_merge, all.x=T, by.x="brightenid", by.y="Participant_ID")
 ```
 
 
 
+
 ```{r}
-selected_study_arms = c('GREEN', 'BLUE', 'ORANGE')
-pattern = paste(selected_study_arms, collapse='|')
-gingerio_metadata <- gingerio_metadata[grepl(pattern, gingerio_metadata$`Participant_ID`),]
-selected_users <- unique(gingerio_metadata$user_id)
+#selected_study_arms = c('GREEN', 'BLUE', 'ORANGE')
+#pattern = paste(selected_study_arms, collapse='|')
+#gingerio_metadata <- gingerio_metadata[grepl(pattern, gingerio_metadata$`Participant_ID`),]
+#selected_users <- unique(gingerio_metadata$user_id)
+#View(study_metadata %>% filter(Studygroup %in% c('RED', 'YELLOW')))
+#table(study_metadata$Studygroup)
 
 #keep only relevant users in ginger data
-gingerio_data <- gingerio_data %>% dplyr::filter(user_id %in% selected_users)
-
-#filter out rows that only 
-x <- gingerio_data[,c(4:ncol(gingerio_data))]
+#gingerio_data <- gingerio_data %>% dplyr::filter(user_id %in% selected_users)
 
 #filter NA rows
 rows_to_keep <- apply(gingerio_data[,-c(1,2,3)], 1, function(x) sum(is.na(x)) != 10 )
 gingerio_data <- gingerio_data[rows_to_keep,]
 
 #keep only relevant users in PHQ9 data
-phq9 <- phq9 %>% dplyr::filter(user_id %in% selected_users) 
-
+#phq9 <- phq9 %>% dplyr::filter(user_id %in% selected_users) 
 
 #Keep only those responses which are in STUDY ARM
 # GREEN BLUE ORANGE
 phq9['study_arm'] <- gsub('-.*','',phq9$brightenid)
-phq9 <- phq9 %>% dplyr::filter(study_arm %in% selected_study_arms )
+#phq9 <- phq9 %>% dplyr::filter(study_arm %in% selected_study_arms )
 
 #keep only relevant users in PHQ2 data
-phq2 <- phq2 %>% dplyr::filter(user_id %in% selected_users)
+#phq2 <- phq2 %>% dplyr::filter(user_id %in% selected_users)
 
 #calculate sum of PHQ2 scores
-phq2['sum_PHQ2'] = phq2[,7] + phq2[,8]
+phq2['sum_phq2'] = phq2[,7] + phq2[,8]
 
 #add study grp to PHQ2
 phq2 <- merge(phq2, study_metadata[,c('user_id','Studygroup')])
@@ -94,6 +94,7 @@ gingerio_data <- gingerio_data %>% dplyr::mutate(end=as.POSIXct(end, tz="America
 ### Add study arm info in ginger data
 temp_df <- phq9[,c('user_id','study_arm')]
 temp_df <- temp_df[!duplicated(temp_df),]
+gingerio_data <- merge(gingerio_data, temp_df, all.x=T)
 gingerio_data <- gingerio_data %>% mutate(study_arm = as.factor(study_arm))
 
 gingerio_data$study_arm <- plyr::revalue(gingerio_data$study_arm, 
@@ -118,10 +119,101 @@ study_metadata$study_arm <- plyr::revalue(study_metadata$Studygroup,
 ```
 
 
+
+```{r}
+### Binning participants into weeks in study and keeping Week 1-12 data only
+
+#ginger data - weeks in study
+per_user_ginger_study_start <- gingerio_data %>% group_by(user_id) %>% 
+  summarise(study_start_utc_passive = min(as.Date(start_utc)))
+
+#In order to be uniform we will the use the start date from passive features only
+#per_user_phq9_study_start <- phq9 %>% group_by(user_id) %>% summarise(study_start_utc_phq9 =  as.Date(min(response_utc)))
+#The following few lines can help understand the diff
+#x <- merge(per_user_ginger_study_start, per_user_phq2_study_start)
+#x <- (merge(x,per_user_phq9_study_start ))
+#x <- x %>% mutate(diff =study_start_utc_ginger - study_start_utc_phq2 )
+#View(x)
+
+gingerio_data <- merge(gingerio_data, per_user_ginger_study_start)
+gingerio_data <- gingerio_data %>% 
+  dplyr::mutate(day_in_study = (as.numeric(as.Date(start_utc) - study_start_utc_passive) + 1)) %>% 
+  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>% select(-start,-end) %>% 
+  filter(week_in_study <= 12 & week_in_study >= 1 )  %>%
+  mutate(passiveFeatureDate = as.character(as.Date(start_utc)), user_id = as.character(user_id))
+
+#PHQ2 - weeks in study
+per_user_phq2_study_start <- phq2 %>% group_by(user_id) %>% 
+  summarise(study_start_utc_phq2 = as.Date(min(response_utc)))
+phq2 <- merge(phq2, per_user_phq2_study_start)
+phq2 <- phq2 %>% dplyr::mutate(day_in_study = (as.numeric(as.Date(response_utc) - study_start_utc_phq2) + 1)) %>% 
+  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>%
+  mutate(phq2ResponseDate = as.Date(response_utc),
+         phq2_response_local = response_local,
+         phq2ResponseTimeSecs = as.numeric(response_utc - sent_time_utc)) %>%
+   filter(week_in_study <= 12 & week_in_study >= 1) %>% 
+  mutate(user_id = as.character(user_id), phq2_response_utc = response_utc) %>% 
+  select(user_id, study_start_utc_phq2, phq2ResponseDate, phq2_response_utc, phq2_response_local, week_in_study, 
+         day_in_study, phq2ResponseTimeSecs, sum_phq2 )
+
+                               
+#PHQ9 - weeks in study
+per_user_phq9_study_start <- phq9 %>% group_by(user_id) %>% 
+  summarise(study_start_utc_phq9 =  as.Date(min(response_utc)))
+phq9 <- merge(phq9, per_user_phq9_study_start)
+phq9 <- phq9 %>% dplyr::mutate(day_in_study = (as.numeric(as.Date(response_utc) - study_start_utc_phq9) + 1)) %>% 
+  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>%
+  mutate(phq9ResponseTimeSecs = as.numeric(response_utc - sent_time_utc),
+         phq9ResponseDate  = as.Date(response_utc),
+         phq9_response_local = response_local,
+         phq9_response_utc = response_utc,
+         user_id = as.character(user_id)) %>%
+  filter(week_in_study <= 12 & week_in_study >= 1) %>% 
+  select(user_id, study_start_utc_phq9, phq9ResponseDate, phq9_response_local, phq9_response_utc, week_in_study, day_in_study, ph1, ph2, ph3, ph4, ph5, ph6, ph7, ph8, ph9, sum_phq9, phq9ResponseTimeSecs)
+```
+
+
+```{r}
+#clear more than one phq2 score per day by taking average
+phq2 <- phq2 %>% as.data.frame()  %>% 
+  group_by(user_id, phq2ResponseDate, day_in_study, week_in_study) %>%
+  dplyr::summarise(phq2ResponseTimeSecs=mean(phq2ResponseTimeSecs),
+                   sum_phq2 = mean(sum_phq2, na.rm = T),
+                   phq2_response_utc = phq2_response_utc[1],
+                   phq2_response_local = phq2_response_local[1], 
+                   study_start_utc_phq2 = study_start_utc_phq2[1])
+
+```
+
+
+
+
 ```{r}
 ###upload the cleaned data to synapse
 parentId <- "syn7211114"
 
+#ginger_io data
+write.table(gingerio_data, file="gingerio_passive_features.tsv", sep="\t", col.names=T, row.names=F)
+synStore(File("gingerio_passive_features.tsv", parentId = parentId),
+         executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+unlink("gingerio_passive_features.tsv")
 
+#phq2
+write.table(phq2, file="phq2_scores.tsv", sep="\t", col.names=T, row.names=F)
+synStore(File("phq2_scores.tsv", parentId = parentId),
+         executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+unlink("phq2_scores.tsv")
+
+#phq9
+write.table(phq9, file="phq9_scores.tsv", sep="\t", col.names=T, row.names=F)
+synStore(File("phq9_scores.tsv", parentId = parentId),
+         executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+unlink("phq9_scores.tsv")
+
+#study metadata
+write.table(study_metadata, file="study_metadata.tsv", sep="\t", col.names=T, row.names=F)
+synStore(File("study_metadata.tsv", parentId = parentId),
+         executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+unlink("study_metadata.tsv")
 ```
 
