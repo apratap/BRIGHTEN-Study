@@ -31,7 +31,7 @@ get_train_test_users <- function(masterData, trainPercent=.70){
   return(list(trainUsers = trainUsers, testUsers=testUsers))
 }
 
-get_continousPred_perf <- function(model, testData){
+get_continuousPred_perf <- function(model, testData){
   pred <- predict(model, testData)
   pred <- pred$predictions
   trueResp <- testData$response
@@ -43,15 +43,6 @@ get_continousPred_perf <- function(model, testData){
 }
 
 
-
-# get_continousPred_perf <- function(pred, trueResp){
-#   testRMSE <- sqrt(mean((trueResp - pred)^2))
-#   total_variation <- sum((trueResp - mean(pred, na.rm = T))^2)
-#   reg_error <- sum((trueResp - pred)^2)
-#   testRsq <- 1 - (reg_error / total_variation)
-#   data.frame(testRMSE=testRMSE, testRsq=testRsq)
-# }
-# 
 
 
 get_bindaryPred_perf <- function(model, testData){
