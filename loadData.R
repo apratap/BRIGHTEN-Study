@@ -7,6 +7,7 @@ library(ggplot2)
 library("plyr")
 library("tidyverse")
 library("printr")
+library("ggthemes")
 synapseLogin()
 
 
