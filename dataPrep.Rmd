@@ -4,6 +4,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+rm(list=ls())
 library(data.table)
 library(gdata)
 library(synapseClient)
@@ -14,6 +15,10 @@ library(dplyr)
 library(tidyr)
 library("reshape2")
 library("knitr")
+library("ggpubr")
+library("ggthemes")
+options(stringsAsFactors = F,
+        Sys.setenv(TZ='GMT'))
 
 knitr::opts_chunk$set(echo = F,  message=FALSE, warning=FALSE)
 knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
@@ -23,197 +28,236 @@ knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
 
 ```{r}
 #PHQ9
-phq9 <- read.xls(synGet('syn5908857')@filePath)
-selcols <- paste0('ph', seq(1,9))
-phq9['sum_phq9'] = rowSums(phq9[, selcols])
-phq9$sent_time_utc <- as.POSIXct(phq9$sent_time_utc,tz='UTC')
-phq9$response_utc <- as.POSIXct(phq9$response_utc,tz='UTC')
+phq9 <- read.xls(synGet('syn10250492')@filePath)
+phq9 <- phq9 %>% mutate(phq10 = as.numeric(  as.character(plyr::revalue(phdis, replace=c('Not difficult at all' = 0, 'Somewhat difficult' = 1, 'Very difficult' = 2,
+          'Extremely difficult'=3))))) %>%
+  mutate(sum_phq9 = phq9, start =lubridate::ymd(start)) %>% 
+  mutate(sum_phq10 = sum_phq9 + phq10,
+         study_arm = gsub('-.*','',brightenid),
+         phq9ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% select(user_id, brightenid, study_arm, start, week, phq9ResponseTimeSecs, sum_phq9, sum_phq10)
 
-phq2 <- fread(synGet('syn5908863')@filePath, data.table=F)
-phq2$sent_time_utc <- as.POSIXct(phq2$sent_time_utc, tz='UTC', format="%m/%d/%y %H:%M")
-phq2$response_utc <- as.POSIXct(phq2$response_utc, tz='UTC', format="%m/%d/%y %H:%M")
 
-#Study metadata
-study_metadata <- read.xls(synGet('syn5908560')@filePath)
-study_metadata <- study_metadata %>% dplyr::mutate(brightenid = as.character(brightenid))
+#PHQ2
+phq2 <- read.xls(synGet('syn10250486')@filePath)
+phq2$sum_phq2 = rowSums(phq2[,c(10,11)])
+phq2[,c(9,10,11,12)] <- NULL
+phq2 <- phq2 %>%  
+  mutate(phq2_date_local = as.Date(lubridate::ymd_hms(sent_time_local)),
+         day = day + 1,
+         start = lubridate::ymd(start),
+         phq2ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% 
+  select(user_id, phq2_date_local, start, day, phq2ResponseTimeSecs, sum_phq2)
+
 
 #GingerIO data
-gingerio_data <- fread(synGet('syn5908849')@filePath, data.table = F)
-gingerio_metadata <- fread(synGet('syn5908850')@filePath, data.table = F)
-colnames(gingerio_metadata) <- gsub(' ', '_',colnames(gingerio_metadata))
-colnames(gingerio_data) <- gsub(' ', '_',colnames(gingerio_data))
+passive_data <- fread(synGet('syn5908849')@filePath, data.table = F)
+colnames(passive_data) <- tolower(gsub(' ', '_',colnames(passive_data)))
+passive_data <- passive_data  %>% mutate(passive_date_pacific = as.Date(lubridate::ymd_hms(start))) %>%  
+  select(-end, -start)
+#getting the participant start dates from PHQ2 data
+passive_data <- merge(passive_data, phq2_start_dates, all.x = T)
 
+passive_metadata <- fread(synGet('syn5908850')@filePath, data.table = F)
+colnames(passive_metadata) <- gsub(' ', '_',colnames(passive_metadata))
+passive_metadata <- passive_metadata %>% mutate(brightenid = Participant_ID) %>%
+  select(-SMS_Count, -Location_Count, -Call_Count, -Participant_ID, -Timezone_at_Activation , -Participant_ID, -Survey_Completion_Percentage,
+-Group, -Profile_ID, -Activation_Status)
+passive_metadata['activation_date_local'] = passive_metadata['Activation_Date_(Local)']
+passive_metadata['activation_date_UTC'] = passive_metadata['Activation_Date_(UTC)']
+passive_metadata['Activation_Date_(Local)'] <- NULL
+passive_metadata['Activation_Date_(UTC)'] <- NULL
+passive_metadata <- passive_metadata %>% 
+  mutate(activation_date_local = as.Date(lubridate::ymd_hms(activation_date_local)),
+         activation_date_UTC = as.Date(lubridate::ymd_hms(activation_date_UTC)))
+passive_data <- merge(passive_data, passive_metadata, all.x=T)
+
+
+#### $NOTE$
+# The following code tells us that "activation_date_UTC" is the best column for # assuming the actual study start date across activities for individuals
+####
+# phq9_start_dates <- phq9 %>% select(user_id, start) %>% mutate(phq9_start = start) %>% select(-start)
+# phq9_start_dates <- phq9_start_dates[!duplicated(phq9_start_dates),] 
+# phq2_start_dates <- phq2 %>% select(user_id, start) %>% mutate(phq2_start = start) %>% select(-start)
+# phq2_start_dates <- phq2_start_dates[!duplicated(phq2_start_dates),]
+# passive_start_dates <- passive_data %>% select(user_id, activation_date_local, activation_date_UTC)
+# passive_start_dates <- passive_start_dates[!duplicated(passive_start_dates),]
+# x <- merge(merge(phq2_start_dates, phq9_start_dates, all=T),passive_start_dates, all=T )
+# x['diff'] = x$activation_date_local - x$activation_date_UTC
+# View(x)
+
+passive_data <- passive_data %>% 
+  dplyr::mutate(day = as.numeric(passive_date_pacific-activation_date_UTC) + 1 ,
+                week = ((day - 1) %/% 7) + 1 ) %>%
+  dplyr::mutate(start = activation_date_UTC)  %>%
+  dplyr::select(-activation_date_local, -activation_date_UTC, -phq2_start )
+
+#Study metadata
+study_metadata <- read.xls(synGet('syn10250485')@filePath)
+study_metadata <- study_metadata %>% 
+  dplyr::mutate(brightenid = as.character(brightenid),
+                baseline_phq9 = PHQScore) %>%
+  dplyr::select(-c(21:27, 36:43), -PHQScore)
+  
+#remove rows with >50 % missing meta data
+to_keep <- apply(study_metadata, 1, function(row) ( sum( is.na(row)) + sum(row == '', na.rm = T)) / length(row)) < .50
+study_metadata <-study_metadata[to_keep,]
+
+# extract master table user_id to brightenid
+userId_to_brigthenId <- rbind(phq9 %>% select(user_id, brightenid), 
+                              passive_data %>% select(user_id, brightenid))
+      
+userId_to_brigthenId <- userId_to_brigthenId[!duplicated(userId_to_brigthenId),]
 
 #add user-id to study metadata table
-to_merge <- gingerio_metadata[, c('Participant_ID', 'user_id')]
-to_merge <- to_merge[!duplicated(to_merge),]
-study_metadata <- merge(study_metadata, to_merge, all.x=T, by.x="brightenid", by.y="Participant_ID")
+study_metadata <- merge(userId_to_brigthenId, study_metadata, all.y = T)
+
+#add user-id to study metadata table
+phq2 <- merge(userId_to_brigthenId, phq2, all.y = T)
 ```
 
 
+```{r}
+replace_codes <- c('BLUE' = 'iPST', 'ORANGE' = 'Health Tips', 'GREEN' = 'Akili',
+                   'RED' = 'EVO_on_iphone_only', 'YELLOW' = 'HealthTips_on_Android')
+phq9$study_arm <- plyr::revalue(phq9$study_arm, replace = replace_codes)
+study_metadata <- study_metadata %>% dplyr::mutate(study_arm = plyr::revalue(Studygroup, replace = replace_codes)) %>% dplyr::select(-Studygroup)
+```
 
 
 ```{r}
-#selected_study_arms = c('GREEN', 'BLUE', 'ORANGE')
-#pattern = paste(selected_study_arms, collapse='|')
-#gingerio_metadata <- gingerio_metadata[grepl(pattern, gingerio_metadata$`Participant_ID`),]
-#selected_users <- unique(gingerio_metadata$user_id)
-#View(study_metadata %>% filter(Studygroup %in% c('RED', 'YELLOW')))
-#table(study_metadata$Studygroup)
-
-#keep only relevant users in ginger data
-#gingerio_data <- gingerio_data %>% dplyr::filter(user_id %in% selected_users)
-
-#filter NA rows
-rows_to_keep <- apply(gingerio_data[,-c(1,2,3)], 1, function(x) sum(is.na(x)) != 10 )
-gingerio_data <- gingerio_data[rows_to_keep,]
-
-#keep only relevant users in PHQ9 data
-#phq9 <- phq9 %>% dplyr::filter(user_id %in% selected_users) 
-
-#Keep only those responses which are in STUDY ARM
-# GREEN BLUE ORANGE
-phq9['study_arm'] <- gsub('-.*','',phq9$brightenid)
-#phq9 <- phq9 %>% dplyr::filter(study_arm %in% selected_study_arms )
-
-#keep only relevant users in PHQ2 data
-#phq2 <- phq2 %>% dplyr::filter(user_id %in% selected_users)
-
-#calculate sum of PHQ2 scores
-phq2['sum_phq2'] = phq2[,7] + phq2[,8]
+#filter days in passive data where no passive feature is recorded  
+select_cols <- colnames(passive_data)[2:11]
+to_keep <- apply(passive_data[, select_cols], 1, function(row) (sum(is.na(row)) + sum(row == '', na.rm = T)) < length(row))
+passive_data <- passive_data[to_keep,]
 
 #add study grp to PHQ2
-phq2 <- merge(phq2, study_metadata[,c('user_id','Studygroup')])
-phq2 <- phq2 %>% dplyr::mutate(Studygroup = as.character(Studygroup)) %>%
-  filter(Studygroup != '')
-
-#convert timestamp to POSIX class
-gingerio_data <- gingerio_data %>% dplyr::mutate(end=as.POSIXct(end, tz="America/Los_Angeles",usetz=TRUE), start= as.POSIXct(start, tz="America/Los_Angeles",usetz=TRUE)) %>%
-  mutate(start_utc =format(start, tz='UTC'))
+phq2 <- merge(phq2, study_metadata[,c('user_id','study_arm')])
 
 ### Add study arm info in ginger data
-temp_df <- phq9[,c('user_id','study_arm')]
+temp_df <- rbind(phq9[,c('user_id','study_arm')],
+                 study_metadata[, c('user_id', 'study_arm')])
 temp_df <- temp_df[!duplicated(temp_df),]
-gingerio_data <- merge(gingerio_data, temp_df, all.x=T)
-gingerio_data <- gingerio_data %>% mutate(study_arm = as.factor(study_arm))
-
-gingerio_data$study_arm <- plyr::revalue(gingerio_data$study_arm, 
-                                         replace = c('BLUE' = 'iPST',
-                                                     'ORANGE' = 'Health Tips',
-                                                     'GREEN' = 'Akili'))
-
-phq2$study_arm <- plyr::revalue(phq2$Studygroup, 
-                                 replace = c('BLUE' = 'iPST',
-                                             'ORANGE' = 'Health Tips',
-                                             'GREEN' = 'Akili'))
-
-phq9$study_arm <- plyr::revalue(phq9$study_arm, 
-                                 replace = c('BLUE' = 'iPST',
-                                             'ORANGE' = 'Health Tips',
-                                             'GREEN' = 'Akili'))
-
-study_metadata$study_arm <- plyr::revalue(study_metadata$Studygroup, 
-                                 replace = c('BLUE' = 'iPST',
-                                             'ORANGE' = 'Health Tips',
-                                             'GREEN' = 'Akili'))
+passive_data <- merge(passive_data, temp_df, all.x=T)
+passive_data <- passive_data %>% mutate(study_arm = as.factor(study_arm))
 ```
-
-
-
-```{r}
-### Binning participants into weeks in study and keeping Week 1-12 data only
-
-#ginger data - weeks in study
-per_user_ginger_study_start <- gingerio_data %>% group_by(user_id) %>% 
-  summarise(study_start_utc_passive = min(as.Date(start_utc)))
-
-#In order to be uniform we will the use the start date from passive features only
-#per_user_phq9_study_start <- phq9 %>% group_by(user_id) %>% summarise(study_start_utc_phq9 =  as.Date(min(response_utc)))
-#The following few lines can help understand the diff
-#x <- merge(per_user_ginger_study_start, per_user_phq2_study_start)
-#x <- (merge(x,per_user_phq9_study_start ))
-#x <- x %>% mutate(diff =study_start_utc_ginger - study_start_utc_phq2 )
-#View(x)
-
-gingerio_data <- merge(gingerio_data, per_user_ginger_study_start)
-gingerio_data <- gingerio_data %>% 
-  dplyr::mutate(day_in_study = (as.numeric(as.Date(start_utc) - study_start_utc_passive) + 1)) %>% 
-  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>% select(-start,-end) %>% 
-  filter(week_in_study <= 12 & week_in_study >= 1 )  %>%
-  mutate(passiveFeatureDate = as.character(as.Date(start_utc)), user_id = as.character(user_id))
-
-#PHQ2 - weeks in study
-per_user_phq2_study_start <- phq2 %>% group_by(user_id) %>% 
-  summarise(study_start_utc_phq2 = as.Date(min(response_utc)))
-phq2 <- merge(phq2, per_user_phq2_study_start)
-phq2 <- phq2 %>% dplyr::mutate(day_in_study = (as.numeric(as.Date(response_utc) - study_start_utc_phq2) + 1)) %>% 
-  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>%
-  mutate(phq2ResponseDate = as.Date(response_utc),
-         phq2_response_local = response_local,
-         phq2ResponseTimeSecs = as.numeric(response_utc - sent_time_utc)) %>%
-   filter(week_in_study <= 12 & week_in_study >= 1) %>% 
-  mutate(user_id = as.character(user_id), phq2_response_utc = response_utc) %>% 
-  select(user_id, study_start_utc_phq2, phq2ResponseDate, phq2_response_utc, phq2_response_local, week_in_study, 
-         day_in_study, phq2ResponseTimeSecs, sum_phq2 )
-
-                               
-#PHQ9 - weeks in study
-per_user_phq9_study_start <- phq9 %>% group_by(user_id) %>% 
-  summarise(study_start_utc_phq9 =  as.Date(min(response_utc)))
-phq9 <- merge(phq9, per_user_phq9_study_start)
-phq9 <- phq9 %>% dplyr::mutate(day_in_study = (as.numeric(as.Date(response_utc) - study_start_utc_phq9) + 1)) %>% 
-  mutate(week_in_study = ( (day_in_study - 1) %/% 7) + 1) %>%
-  mutate(phq9ResponseTimeSecs = as.numeric(response_utc - sent_time_utc),
-         phq9ResponseDate  = as.Date(response_utc),
-         phq9_response_local = response_local,
-         phq9_response_utc = response_utc,
-         user_id = as.character(user_id)) %>%
-  filter(week_in_study <= 12 & week_in_study >= 1) %>% 
-  select(user_id, study_start_utc_phq9, phq9ResponseDate, phq9_response_local, phq9_response_utc, week_in_study, day_in_study, ph1, ph2, ph3, ph4, ph5, ph6, ph7, ph8, ph9, sum_phq9, phq9ResponseTimeSecs)
-```
-
-
-```{r}
-#clear more than one phq2 score per day by taking average
-phq2 <- phq2 %>% as.data.frame()  %>% 
-  group_by(user_id, phq2ResponseDate, day_in_study, week_in_study) %>%
-  dplyr::summarise(phq2ResponseTimeSecs=mean(phq2ResponseTimeSecs),
-                   sum_phq2 = mean(sum_phq2, na.rm = T),
-                   phq2_response_utc = phq2_response_utc[1],
-                   phq2_response_local = phq2_response_local[1], 
-                   study_start_utc_phq2 = study_start_utc_phq2[1])
-
-```
-
-
-
 
 ```{r}
 ###upload the cleaned data to synapse
-parentId <- "syn7211114"
+parentId <- "syn10236537"
 
-#ginger_io data
-write.table(gingerio_data, file="gingerio_passive_features.tsv", sep="\t", col.names=T, row.names=F)
-synStore(File("gingerio_passive_features.tsv", parentId = parentId),
+#Passive data
+outFile = "BRIGHTEN_V1_passive_features.tsv"
+write.table(passive_data, file=outFile, sep="\t", col.names=T, row.names=F)
+synStore(File(outFile, parentId = parentId),
+         used = c("syn5908849", "syn5908850"),
          executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
-unlink("gingerio_passive_features.tsv")
+unlink(outFile)
 
 #phq2
-write.table(phq2, file="phq2_scores.tsv", sep="\t", col.names=T, row.names=F)
-synStore(File("phq2_scores.tsv", parentId = parentId),
+outFile = "BRIGHTEN_V1_phq2_scores.tsv"
+write.table(phq2, file=outFile, sep="\t", col.names=T, row.names=F)
+synStore(File(outFile, parentId = parentId),
+         used = "syn10250486",
          executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
-unlink("phq2_scores.tsv")
+unlink(outFile)
 
 #phq9
-write.table(phq9, file="phq9_scores.tsv", sep="\t", col.names=T, row.names=F)
-synStore(File("phq9_scores.tsv", parentId = parentId),
+outFile = "BRIGHTEN_V1_phq9_scores.tsv"
+write.table(phq9, file=outFile, sep="\t", col.names=T, row.names=F)
+synStore(File(outFile, parentId = parentId),
+          used ="syn10250492",
          executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
-unlink("phq9_scores.tsv")
+unlink(outFile)
 
 #study metadata
-write.table(study_metadata, file="study_metadata.tsv", sep="\t", col.names=T, row.names=F)
-synStore(File("study_metadata.tsv", parentId = parentId),
+outFile = "BRIGHTEN_V1_study_metadata.tsv"
+write.table(study_metadata, file=outFile, sep="\t", col.names=T, row.names=F)
+synStore(File(outFile, parentId = parentId),
+         used="syn10250485",
          executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
-unlink("study_metadata.tsv")
+unlink(outFile)
 ```
 
+
+
+
+```{r}
+
+# dim(x)
+# y <- passivefeatures %>% filter(user_id == '10439')
+# dim(y)
+# dim(merge(x,y, by.x=c('user_id', 'phq2ResponseDate'), 
+#            by.y=c('user_id', 'passiveFeatureDate')))
+# 
+
+# passivefeatures <- gingerio_data
+# mdata <- study_metadata
+# 
+# ### For now we are averaging over PHQ2 scores over 3 days. (+/- 1 day from passive data entry)
+# boundary_days <- 1
+# tmp_phq2 <- phq2 %>% as.data.frame() %>% 
+#   mutate(tmp_epoch_min = as.numeric(as.POSIXct(phq2ResponseDate, tz="UTC")) + (boundary_days*24*60*60),
+#          #tmp_epoch_max = as.numeric(as.POSIXct(phq2ResponseDate, tz="UTC")) + (boundary_days*24*60*60),
+#          tmp_epoch_max = as.numeric(as.POSIXct(phq2ResponseDate)) + (boundary_days*24*60*60),
+#          phq2Response_epoch = as.numeric(as.POSIXct(phq2ResponseDate, tz="UTC"))) %>% 
+#   select(user_id, tmp_epoch_min, tmp_epoch_max, phq2Response_epoch, phq2ResponseDate, sum_phq2)
+# 
+# tmp_passiveFeatures <- passivefeatures %>% 
+#   mutate(passiveFeatureDate_epoch = as.numeric(as.POSIXct(passiveFeatureDate , tz="UTC"))) %>% select(-study_arm)
+# 
+# library(sqldf)
+# phq2_passiveFeatures <- sqldf('select * from tmp_passiveFeatures inner join tmp_phq2 on tmp_passiveFeatures.user_id == tmp_phq2.user_id where tmp_passiveFeatures.passiveFeatureDate_epoch between tmp_phq2.tmp_epoch_min and tmp_phq2.tmp_epoch_max')
+# phq2_passiveFeatures$user_id <- NULL
+# phq2_passiveFeatures <- phq2_passiveFeatures %>%
+#                         group_by(user_id, passiveFeatureDate, SMS_Length, Unreturned_Calls, Call_Duration,     Mobility, Interaction_Diversity, Missed_Interactions, Aggregate_Communication, SMS_Count,
+#                                 Mobility_Radius, Call_Count, day_in_study, week_in_study) %>% 
+#   summarise(sum_phq2 =mean(sum_phq2, na.rm = T))
+
+
+########################
+# MERGE - baseline demographics
+########################=
+# phq2_passiveFeatures_demog <- phq2_passiveFeatures %>% inner_join(mdata %>% mutate(user_id = as.character(user_id)) %>%
+#                                            select(user_id, Gender, Age, PHQScore, State, education, employed,
+#                                                           income1, income2, marital, race, ordinalincome, minority,
+#                                                           therapist, book))
+
+#upload to synapse
+# write.table(phq2_passiveFeatures_demog, file="phq2_passive_demog_integrated.tsv", sep="\t",row.names = F, quote=F, col.names = T)
+# tmp = synStore(File("phq2_passive_demog_integrated.tsv", parentId = 'syn7211114'),
+#                used = c('syn8259883', 'syn8259868', 'syn8259866'),
+#                executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+# unlink("phq2_passive_demog_integrated.tsv")
+
+################
+#MERGE PHQ9
+################
+
+# boundary_days <- 3
+# tmp_phq9 <- phq9  %>% 
+#   mutate(tmp_epoch_min = as.numeric(as.POSIXct(phq9ResponseDate, tz="UTC")) - (boundary_days*24*60*60),
+#          tmp_epoch_max = as.numeric(as.POSIXct(phq9ResponseDate, tz="UTC")) + (boundary_days*24*60*60)) %>%
+#   select(user_id, phq9ResponseDate, tmp_epoch_min, tmp_epoch_max, ph1,ph2,ph3,ph4,ph5,ph6,ph7,ph8,ph9,sum_phq9) %>% filter(user_id %in% phq2_passiveFeatures$user_id)
+# 
+# dim(passivefeatures)
+# tmp_phq2_passiveFeatures <- phq2_passiveFeatures_demog %>% mutate(passiveFeatureDate_epoch = as.numeric(as.POSIXct(passiveFeatureDate, tz="UTC")))
+# 
+# 
+# library(sqldf)
+# phq2_passive_ph9_demog <- sqldf('select * from tmp_phq9 inner join tmp_phq2_passiveFeatures on tmp_phq2_passiveFeatures.user_id == tmp_phq9.user_id where tmp_phq2_passiveFeatures.passiveFeatureDate_epoch between tmp_phq9.tmp_epoch_min and tmp_phq9.tmp_epoch_max')
+# phq2_passive_ph9_demog$user_id <- NULL
+# phq2_passive_ph9_demog <- phq2_passive_ph9_demog %>% select(-passiveFeatureDate_epoch, -tmp_epoch_min, -tmp_epoch_max, -passiveFeatureDate, -State, -income2)
+# 
+# phq2_passive_ph9_demog <- phq2_passive_ph9_demog %>% group_by(user_id, Gender, Age, PHQScore, education, employed, 
+#                                                   income1, marital, race, ordinalincome,
+#                                                   minority, therapist, book, 
+#                                                   phq9ResponseDate, ph1, ph2, ph3, ph4, ph5, ph6, ph7, ph8, ph9, sum_phq9) %>%
+#                     summarise_each(funs(median))
+
+
+#upload to synapse
+# write.table(phq2_passive_ph9_demog, file="phq2_passive_phq9_demog_integrated.tsv", sep="\t",row.names = F, quote=F, col.names = T)
+# tmp = synStore(File("phq2_passive_phq9_demog_integrated.tsv", parentId = 'syn7211114'),
+#                executed = "https://github.com/apratap/BRIGHTEN-Study/blob/master/dataPrep.Rmd")
+#unlink("phq2_passive_phq9_demog_integrated.tsv")
+```
