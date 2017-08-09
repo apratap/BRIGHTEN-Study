@@ -10,7 +10,6 @@ library("printr")
 library("ggthemes")
 synapseLogin()
 
-
 #1. Get data
 passive_data <- fread(synGet("syn10236538")@filePath, data.table = F) %>% 
   dplyr::mutate(day = as.numeric(day),
@@ -23,6 +22,7 @@ phq2  <- fread(synGet("syn10236539")@filePath, data.table = F)
 phq2 <- phq2 %>% 
   dplyr::mutate(phq2_date_local = as.Date(phq2_date_local),
                 start = as.Date(start),
+                week = ((day - 1) %/% 7) + 1,
                 user_id = as.character(user_id)) %>%
   filter(!study_arm %in% c(NA, '')) %>%
   dplyr::select(-brightenid, -study_arm) 
@@ -31,6 +31,12 @@ phq2 <- phq2 %>%
 phq2 <- phq2 %>% group_by(user_id, day, start) %>% 
   summarise_all(.funs=function(x) mean(x, na.rm=T)) %>% as.data.frame()
 
+
+phq9  <- fread(synGet("syn10236540")@filePath, data.table = F) %>% 
+  dplyr::select(-brightenid,  -study_arm) %>%
+  dplyr::mutate(week = as.numeric(week),
+                start = as.Date(start),
+                user_id = as.character(user_id))
 
 #2. MERGE - Passive features and PHQ2 (daily mood)
 # x <- passive_data %>% filter(user_id == '15919') %>% mutate(start = as.character(start))
@@ -62,7 +68,6 @@ tmp_impute_col <- function(col){
 }
 sum(complete.cases(passive_n_phq2))
 
-str(passive_n_phq2)
 # Step 1 - fill missing values based on the values in that week
 passive_n_phq2_with_imputed_vals <- passive_n_phq2  %>% group_by(user_id, week, start) %>%
   mutate_all(.funs = tmp_impute_col )
@@ -116,11 +121,18 @@ passive_n_phq2 <- passive_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
 
 
 
+
+
 #FINAL data
 FINAL_DATA <- passive_n_phq2_with_imputed_vals[complete.cases(passive_n_phq2_with_imputed_vals),]
 #Add the metadata
 mdata <- fread(synGet("syn10236547")@filePath, data.table=F)
 FINAL_DATA <-  merge(FINAL_DATA, mdata, all.x=T)
 
-rm(keep_users, missingData, missingNess, p1, passive_n_phq2, passive_n_phq2_with_imputed_vals,
+#Add the PHQ9 data
+FINAL_DATA <- FINAL_DATA %>% dplyr::mutate(start = as.Date(start))
+intersect(colnames(phq9), colnames(FINAL_DATA))
+FINAL_DATA <- merge(FINAL_DATA, phq9, all.x=T)
+
+rm(keep_users, missingData, missingNess, p1, passive_n_phq2_with_imputed_vals,
   SELECTED_USERS, tmp_impute_col, tmp_passive_data, tmp_phq2, x, x1, x2)
