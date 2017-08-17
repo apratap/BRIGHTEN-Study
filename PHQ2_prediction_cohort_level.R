@@ -13,17 +13,15 @@ source("loadData.R")
 #load ML methods
 source("ML_methods.R")
 
-final_df <- FINAL_DATA
 
-### After all the imputation remove users with < 30 days worth of data
+### After all the imputation remove users with < 40 days worth of data
 final_df <- FINAL_DATA %>% dplyr::filter(week <= 12)
 numData_per_user<- final_df %>% dplyr::group_by(user_id) %>% dplyr::summarise(n = n())
 quantile(numData_per_user$n, probs=seq(0,1,.1))
 selected_users <- numData_per_user %>% filter(n >= 40) %>% .$user_id
 final_df <- final_df %>% filter(user_id %in% selected_users)
 
-
-passiveFeatures <- colnames(final_df)[c(4:13,17)]
+passiveFeatures <- colnames(final_df)[c(5:14,17)]
 sesFeatures <- c("Age", "Gender", "education", "employed", "marital", "race",
                  "hispanic", "minority")
 
@@ -87,7 +85,7 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
   })
 }
 
-numRepeats=50
+numRepeats=100
 numWeeks = 6
 set.seed(747845)
 # predict PHQ2 // using passive features only ?
@@ -177,132 +175,49 @@ ls()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-################################
-### Summary Numbers
-################################
-
-#
-to_keep_rows <- complete.cases(data[, passiveFeature_cols])
-data_flt <- data[to_keep_rows,]
-n_distinct(data_flt$user_id)
-
-# number of days where passive data recorded 
-x <- data_flt %>% group_by(user_id) %>% summarize(n = n_distinct(c(passiveFeatureDate, phq2ResponseDate)))
-sum(x$n)
-n_distinct(data_flt$phq2ResponseDate)
-
-
-
-
-################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #######################
 ## OLD Code Fellow
 #######################
 
 
-library(caret)
-registerDoMC(10)
-tmp <- get_test_train_data(predictors=c(demographics_vars,"week_in_study", ),
-                           response='PHQ2_class')
-trainData <- tmp[[1]]
-testData <- tmp[[2]]
-control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
-tunegrid <- expand.grid(mtry=c(2:13))
-rf_classf_model <- train(response ~ . , data=trainData, method="rf",
-                         trControl=control, metric="Accuracy",tuneGrid=tunegrid)
-preds <- predict(rf_classf_model, testData)
-confusionMatrix(preds, testData$response)
-
-
-#2. Random Forest - regression
-tmp <- get_test_train_data(predictors=c(demographics_vars,"week_in_study"),
-                           response='sum_PHQ2')
-trainData <- tmp[[1]]
-testData <- tmp[[2]]
-control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
-tunegrid <- expand.grid(mtry=c(2:13))
-rf_regress_model <- train(response ~ . , data=trainData, method="rf",
-                          trControl=control, metric="RMSE",tuneGrid=tunegrid)
-rf_regress_model
-preds <- predict(rf_regress_model, testData)
-
-RMSE <- sqrt(mean((testData$r esponse - preds)^2))
-RMSE
-total_variation <- sum((testData$response - mean(testData$response))^2)
-reg_error <- sum((testData$response - preds)^2)
-reg_error
-1 - reg_error / total_variation
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-seed <- 3454545
-tunegrid <- expand.grid(mtry=c(3:12))
-rf_tune_accurary <- train(response ~ . , data=trainData, method="rf",  trControl=control)
-
-p1 <- ggplot(data=rf_tune_accurary$results, aes(x=mtry, y=Accuracy)) + geom_line() + theme_bw()  + xlab('num of predictors')
-p2 <- ggplot(data=rf_tune_accurary$results, aes(x=mtry, y=AccuracySD)) + geom_line() + theme_bw()  + xlab('num of predictors')
-grid.newpage()
-grid.draw(rbind(ggplotGrob(p1), ggplotGrob(p2), size = "last"))
-
-
-###----------------------
-
-control <- trainControl(method="cv", number=10, repeats=3, search="grid", classProbs = TRUE, summaryFunction = twoClassSummary)
-seed <- 3454545
-tunegrid <- expand.grid(mtry=c(1:13))
-
-
-sjp.aov1(anova(lm.fit1))
-
-sjp.lm(lm.fit1,type = "std")
-sjt.lm(model1,model2, labelDependentVariables = c("deltaTime","distance"),
-       showHeaderStrings = TRUE, stringB = "Estimate",
-       stringCI = "Conf. Int.", stringP = "p-value",
-       stringDependentVariables = "Response",stringPredictors = "Coefficients",
-       group.pred = T,
-       CSS = list(css.topcontentborder = "+font-size: 0px;"))
+# library(caret)
+# registerDoMC(10)
+# tmp <- get_test_train_data(predictors=c(demographics_vars,"week_in_study", ),
+#                            response='PHQ2_class')
+# trainData <- tmp[[1]]
+# testData <- tmp[[2]]
+# control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+# tunegrid <- expand.grid(mtry=c(2:13))
+# rf_classf_model <- train(response ~ . , data=trainData, method="rf",
+#                          trControl=control, metric="Accuracy",tuneGrid=tunegrid)
+# preds <- predict(rf_classf_model, testData)
+# confusionMatrix(preds, testData$response)
+# 
+# 
+# #2. Random Forest - regression
+# tmp <- get_test_train_data(predictors=c(demographics_vars,"week_in_study"),
+#                            response='sum_PHQ2')
+# trainData <- tmp[[1]]
+# testData <- tmp[[2]]
+# control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+# tunegrid <- expand.grid(mtry=c(2:13))
+# rf_regress_model <- train(response ~ . , data=trainData, method="rf",
+#                           trControl=control, metric="RMSE",tuneGrid=tunegrid)
+# preds <- predict(rf_regress_model, testData)
+# RMSE <- sqrt(mean((testData$response - preds)^2))
+# total_variation <- sum((testData$response - mean(testData$response))^2)
+# reg_error <- sum((testData$response - preds)^2)
+# reg_error
+# 1 - reg_error / total_variation
+# seed <- 3454545
+# tunegrid <- expand.grid(mtry=c(3:12))
+# rf_tune_accurary <- train(response ~ . , data=trainData, method="rf",  trControl=control)
+# sjp.aov1(anova(lm.fit1))
+# sjp.lm(lm.fit1,type = "std")
+# sjt.lm(model1,model2, labelDependentVariables = c("deltaTime","distance"),
+#        showHeaderStrings = TRUE, stringB = "Estimate",
+#        stringCI = "Conf. Int.", stringP = "p-value",
+#        stringDependentVariables = "Response",stringPredictors = "Coefficients",
+#        group.pred = T,
+#        CSS = list(css.topcontentborder = "+font-size: 0px;"))
 
