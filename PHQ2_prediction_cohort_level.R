@@ -21,7 +21,7 @@ quantile(numData_per_user$n, probs=seq(0,1,.1))
 selected_users <- numData_per_user %>% filter(n >= 40) %>% .$user_id
 final_df <- final_df %>% filter(user_id %in% selected_users)
 
-passiveFeatures <- colnames(final_df)[c(5:14,17)]
+passiveFeatures <- colnames(final_df)[c(6:15,18)]
 sesFeatures <- c("Age", "Gender", "education", "employed", "marital", "race",
                  "hispanic", "minority")
 
