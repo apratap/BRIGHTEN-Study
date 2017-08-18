@@ -138,6 +138,6 @@ FINAL_DATA <-  merge(FINAL_DATA, mdata, all.x=T)
 FINAL_DATA <- FINAL_DATA %>% dplyr::mutate(start = as.Date(start))
 FINAL_DATA <- merge(FINAL_DATA, phq9, all.x=T)
 
-rm(keep_users, missingData, missingNess, p1, passive_n_phq2_with_imputed_vals,
+rm(keep_users, missingData, missingNess, passive_n_phq2_with_imputed_vals,
    SELECTED_USERS, tmp_impute_col, tmp_passive_data, tmp_phq2)
 ls()
