@@ -5,7 +5,6 @@ install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
 install_load("ranger", "caret", "printr", "ggthemes")
 
 registerDoMC(detectCores()-4)
-library("synapseClient")
 
 #load data
 source("loadData.R")
@@ -88,89 +87,77 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
 numRepeats=100
 numWeeks = 6
 set.seed(747845)
-# predict PHQ2 // using passive features only ?
+
+#2.  predict PHQ2 // using passive features 
 pred_phq2_passive <- tmpFun_runRandomForest(passiveFeatures,
                                             response = 'sum_phq2', 
                                             masterData = final_df, 
                                             numRepeats=numRepeats, numWeeks = numWeeks)
+# pred_phq2Class_passive <- tmpFun_runRandomForest(passiveFeatures,
+#                                             response = 'phq2_class', 
+#                                             masterData = final_df, 
+#                                             numRepeats=numRepeats, numWeeks = numWeeks)
+# pred_phq2Class_passive$auc = 1 - pred_phq2Class_passive$auc 
 
-pred_phq2Class_passive <- tmpFun_runRandomForest(passiveFeatures,
-                                            response = 'phq2_class', 
-                                            masterData = final_df, 
-                                            numRepeats=numRepeats, numWeeks = numWeeks)
-pred_phq2Class_passive$auc = 1 - pred_phq2Class_passive$auc 
 
+#3. predict PHQ2 using demographics ONLY features?
+pred_phq2_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='sum_phq2',
+                                          masterData=final_df,
+                                          numRepeats=numRepeats, numWeeks = numWeeks)
+# pred_phq2Class_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='phq2_class',
+#                                                masterData=final_df,
+#                                                numRepeats=numRepeats, numWeeks = numWeeks)
+# pred_phq2Class_demog$auc <- 1 - pred_phq2Class_demog$auc
 
-# 2.A predict PHQ2 // using passive + demographics features?
-pred_phq2_passive_plus_demog <- tmpFun_runRandomForest(predictors = c(passiveFeatures, sesFeatures),
+#4. predict PHQ2 using demographics + baselinePHQ9 features
+pred_phq2_demog_plus_baselinePHQ9 <- tmpFun_runRandomForest(predictors=c(sesFeatures, 'baseline_phq9'),
+                                                            response='sum_phq2',
+                                                            masterData=final_df,
+                                                            numRepeats=numRepeats, numWeeks = numWeeks)
+
+#5. predict PHQ2 // using demographics + baselinePHQ9 + passive
+pred_phq2_demog_plus_baselinePHQ9_plus_passive <- tmpFun_runRandomForest(predictors = c(passiveFeatures, sesFeatures, 'baseline_phq9'),
                                                        response = 'sum_phq2',
                                                        masterData = final_df,
                                                        numRepeats=numRepeats, numWeeks = numWeeks)
 
-pred_phq2Class_passive_plus_demog <- tmpFun_runRandomForest(predictors = c(passiveFeatures,
-                                                                           sesFeatures),
-                                                       response = 'phq2_class',
-                                                       masterData = final_df,
-                                                       numRepeats=numRepeats, numWeeks = numWeeks)
-pred_phq2Class_passive_plus_demog$auc = 1 - pred_phq2Class_passive_plus_demog$auc 
+# pred_phq2Class_passive_plus_demog <- tmpFun_runRandomForest(predictors = c(passiveFeatures,
+#                                                                            sesFeatures),
+#                                                             response = 'phq2_class',
+#                                                             masterData = final_df,
+#                                                             numRepeats=numRepeats, numWeeks = numWeeks)
+# pred_phq2Class_passive_plus_demog$auc = 1 - pred_phq2Class_passive_plus_demog$auc 
 
-
-# 2.B predict PHQ2 using passive + demographics + Baseline PHQ9 features
-pred_phq2_passive_demog_basePHQ9 <- tmpFun_runRandomForest(predictors = c(passiveFeatures, sesFeatures, 'baseline_phq9'),
-                                                           response = 'sum_phq2',
-                                                           masterData = final_df,
-                                                           numRepeats=numRepeats, numWeeks = numWeeks)
-
-pred_phq2Class_passive_demog_basePHQ9 <- tmpFun_runRandomForest(predictors = c(passiveFeatures, sesFeatures, 'baseline_phq9'),
-                                                           response = 'phq2_class',
-                                                           masterData = final_df,
-                                                           numRepeats=numRepeats, numWeeks = numWeeks)
-pred_phq2Class_passive_demog_basePHQ9$auc = 1- pred_phq2Class_passive_demog_basePHQ9$auc
-
-# 2.C predict PHQ2 using demographics ONLY features?
-pred_phq2_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='sum_phq2',
-                                          masterData=final_df,
-                                          numRepeats=numRepeats, numWeeks = numWeeks)
-
-pred_phq2Class_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='phq2_class',
-                                               masterData=final_df,
-                                               numRepeats=numRepeats, numWeeks = numWeeks)
-pred_phq2Class_demog$auc <- 1 - pred_phq2Class_demog$auc
 
 
 #PHQ2 regression results
 pred_phq2_passive['type'] = 'passive'
 pred_phq2_demog['type'] = 'demog'
-pred_phq2_passive_plus_demog['type'] = 'passive+demog'
-pred_phq2_passive_demog_basePHQ9['type'] = paste0('passive+demog+','\n','baselinePHQ9')
-pred_phq2_regress <- rbind(pred_phq2_passive, 
-                           pred_phq2_passive_plus_demog, 
-                           pred_phq2_passive_demog_basePHQ9,
-                           pred_phq2_demog)
+pred_phq2_demog_plus_baselinePHQ9['type'] = 'demog + baselinePHQ9'
+pred_phq2_demog_plus_baselinePHQ9_plus_passive['type'] = 'demog + baselinePHQ9 + passive'
+pred_phq2_regress <- rbind(pred_phq2_demog, 
+                           pred_phq2_demog_plus_baselinePHQ9,
+                           pred_phq2_demog_plus_baselinePHQ9_plus_passive)
 p1 <- ggplot(data=pred_phq2_regress, aes(x=as.factor(week), fill=type, y=testRsq)) + geom_boxplot() + theme_bw()  
 p1 <- p1 + scale_fill_manual(values=c('#4D71A2', '#C4AA25', '#8F2D56', '#49A655')) + theme(text = element_text(size=10))
 p1 <- p1 + xlab('weeks of training data looked at for test cases') + ylab('test r-squared (random forest)')
 ggsave("plots/RF_PHQ2_regression_pred_results.png", p1, width=7, height=3, units="in", dpi=100)
 
 
-#PHQ2 classification results
-pred_phq2Class_demog['type'] = 'demog'
-pred_phq2Class_passive['type'] = 'passive'
-pred_phq2Class_passive_plus_demog['type'] = 'passive+demog'
-pred_phq2Class_passive_demog_basePHQ9['type'] = paste0('passive+demog+','\n','baselinePHQ9')
-pred_phq2_classpred <- rbind(pred_phq2Class_demog, 
-                             pred_phq2Class_passive,
-                             pred_phq2Class_passive_plus_demog,
-                             pred_phq2Class_passive_demog_basePHQ9)
-                       
-p1 <- ggplot(data=pred_phq2_classpred, aes(x=as.factor(week), fill=type, y=auc)) + geom_boxplot() + theme_bw()  
-p1 <- p1 + scale_fill_manual(values=c('#4D71A2', '#C4AA25', '#8F2D56', '#49A655')) + theme(text = element_text(size=10))
-p1 + xlab('weeks of training data looked at for test cases') + ylab('AUC-ROC')
-ggsave("plots/RF_PHQ2_class_pred_results.png", width=7, height=3, units="in", dpi=100)
-
-ls()
-
-
+# #PHQ2 classification results
+# pred_phq2Class_demog['type'] = 'demog'
+# pred_phq2Class_passive['type'] = 'passive'
+# pred_phq2Class_passive_plus_demog['type'] = 'passive+demog'
+# pred_phq2Class_passive_demog_basePHQ9['type'] = paste0('passive+demog+','\n','baselinePHQ9')
+# pred_phq2_classpred <- rbind(pred_phq2Class_demog, 
+#                              pred_phq2Class_passive,
+#                              pred_phq2Class_passive_plus_demog,
+#                              pred_phq2Class_passive_demog_basePHQ9)
+#                        
+# p1 <- ggplot(data=pred_phq2_classpred, aes(x=as.factor(week), fill=type, y=auc)) + geom_boxplot() + theme_bw()  
+# p1 <- p1 + scale_fill_manual(values=c('#4D71A2', '#C4AA25', '#8F2D56', '#49A655')) + theme(text = element_text(size=10))
+# p1 + xlab('weeks of training data looked at for test cases') + ylab('AUC-ROC')
+# ggsave("plots/RF_PHQ2_class_pred_results.png", width=7, height=3, units="in", dpi=100)
 
 
 
