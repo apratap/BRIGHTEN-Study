@@ -38,7 +38,6 @@ phq9  <- fread(synGet("syn10236540")@filePath, data.table = F)
 phq9 <- phq9 %>% dplyr::mutate(start = as.Date(start),user_id = as.character(user_id)) %>%
   dplyr::select(-brightenid) 
 
-
 #metadata
 metaData  <- fread(synGet("syn10236547")@filePath, data.table = F) 
 
@@ -60,8 +59,8 @@ metaData  <- fread(synGet("syn10236547")@filePath, data.table = F)
 tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1)
 tmp_passive_data <- passive_data %>% mutate(start = as.character(start))
 intersect(colnames(tmp_passive_data), colnames(tmp_phq2))
-# str(tmp_passive_data)
-# str(tmp_phq2)
+#str(tmp_passive_data)
+#str(tmp_phq2)
 ### Merged Passive and PHQ2 data
 passive_n_phq2 <- merge(tmp_passive_data, tmp_phq2, all.x=T, all.y=T)
 
@@ -102,8 +101,7 @@ SELECTED_USERS <- missingData$user_id[keep_users]
 passive_n_phq2 <- passive_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
 
 
-# 
-# 
+
 # #num of data points per user 
 # tmp_passive_n_phq2 <- passive_n_phq2[complete.cases(passive_n_phq2),]
 # numData_per_user_1 <- tmp_passive_n_phq2 %>% dplyr::filter(week <= 12) %>% dplyr::group_by(user_id) %>% dplyr::summarise(n = n())
@@ -125,19 +123,27 @@ passive_n_phq2 <- passive_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
 # 
 
 
-
-
-
-#FINAL data
-FINAL_DATA <- passive_n_phq2_with_imputed_vals[complete.cases(passive_n_phq2_with_imputed_vals),]
+#FINAL data with ImputedValues for Passive data
+FINAL_DATA_noImpute <- passive_n_phq2[complete.cases(passive_n_phq2),]
 #Add the metadata
-mdata <- fread(synGet("syn10236547")@filePath, data.table=F)
-FINAL_DATA <-  merge(FINAL_DATA, mdata, all.x=T)
-
+FINAL_DATA_noImpute <-  merge(FINAL_DATA_noImpute, metaData, all.x=T)
 #Add the PHQ9 data
-FINAL_DATA <- FINAL_DATA %>% dplyr::mutate(start = as.Date(start))
-FINAL_DATA <- merge(FINAL_DATA, phq9, all.x=T)
+FINAL_DATA_noImpute <- FINAL_DATA_noImpute %>% dplyr::mutate(start = as.Date(start))
+FINAL_DATA_noImpute <- merge(FINAL_DATA_noImpute, phq9, all.x=T)
 
+#FINAL data with ImputedValues for Passive data
+FINAL_DATA_wImputedVals <- passive_n_phq2_with_imputed_vals[complete.cases(passive_n_phq2_with_imputed_vals),]
+#Add the metadata
+FINAL_DATA_wImputedVals <-  merge(FINAL_DATA_wImputedVals, metaData, all.x=T)
+#Add the PHQ9 data
+FINAL_DATA_wImputedVals <- FINAL_DATA_wImputedVals %>% dplyr::mutate(start = as.Date(start))
+FINAL_DATA_wImputedVals <- merge(FINAL_DATA_wImputedVals, phq9, all.x=T)
+
+
+#remove temp vars
 rm(keep_users, missingData, missingNess, passive_n_phq2_with_imputed_vals,
    SELECTED_USERS, tmp_impute_col, tmp_passive_data, tmp_phq2)
+
+
+
 ls()
