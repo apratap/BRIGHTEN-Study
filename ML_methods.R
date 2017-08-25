@@ -2,10 +2,10 @@ library("ranger")
 
 get_train_test_data <- function(predictors, response, masterData, trainUsers, testUsers,
                                 include_N_weeks_testData_in_training = 0){
-  modelData <- masterData[,c(predictors, 'user_id', 'week')]
+  modelData <- masterData[,c(predictors, 'brightenid', 'week')]
   modelData['response'] <- masterData[[response]]
-  trainData <- modelData %>% filter(user_id %in% trainUsers)
-  testData <- modelData %>% filter(user_id %in% testUsers)
+  trainData <- modelData %>% filter(brightenid %in% trainUsers)
+  testData <- modelData %>% filter(brightenid %in% testUsers)
   
   if(include_N_weeks_testData_in_training > 0){
     newTrainData <- testData %>% 
@@ -24,7 +24,7 @@ get_train_test_data <- function(predictors, response, masterData, trainUsers, te
 
 
 get_train_test_users <- function(masterData, trainPercent=.70){
-  uniqUsers <- unique(masterData$user_id)
+  uniqUsers <- unique(masterData$brightenid)
   trainIds_idx <- sample(1:length(uniqUsers), round(length(uniqUsers)*trainPercent))
   trainUsers <- uniqUsers[trainIds_idx] 
   testUsers <- uniqUsers[-trainIds_idx]

@@ -6,19 +6,21 @@ install_load("ranger", "caret", "printr", "ggthemes")
 
 registerDoMC(detectCores()-4)
 
+source("HARDCODED_VARS.R")
+
 #load data
 source("loadData.R")
+ls()
 
 #load ML methods
 source("ML_methods.R")
 
-
 ### After all the imputation remove users with < 40 days worth of data
-final_df <- FINAL_DATA %>% dplyr::filter(week <= 12)
-numData_per_user<- final_df %>% dplyr::group_by(user_id) %>% dplyr::summarise(n = n())
+final_df <- FINAL_DATA_wImputedVals %>% dplyr::filter(week <= 12) %>% dplyr::select(-phq2_date_local)
+numData_per_user<- final_df %>% dplyr::group_by(brightenid) %>% dplyr::summarise(n = n())
 quantile(numData_per_user$n, probs=seq(0,1,.1))
-selected_users <- numData_per_user %>% filter(n >= 40) %>% .$user_id
-final_df <- final_df %>% filter(user_id %in% selected_users)
+selected_users <- numData_per_user %>% filter(n >= 40) %>% .$brightenid
+final_df <- final_df %>% filter(brightenid %in% selected_users)
 
 passiveFeatures <- colnames(final_df)[c(6:15,18)]
 sesFeatures <- c("Age", "Gender", "education", "employed", "marital", "race",
@@ -32,7 +34,6 @@ final_df$phq2_class[final_df$sum_phq2 >= 3] = 'high'
 
 
 ##### Predict PHQ2 - using passive data
-
 #1. Simple Linear Model
 set.seed(35453)
 users <- get_train_test_users(final_df)
@@ -41,8 +42,8 @@ lm_output <- ldply(0:6, function(week){
                               response='sum_phq2', trainUsers=users$trainUsers, 
                               testUsers = users$testUsers, 
                               include_N_weeks_testData_in_training=week)
-  train <- data$train %>% dplyr::select(-user_id)
-  test <- data$test %>% dplyr::select(-user_id)
+  train <- data$train %>% dplyr::select(-brightenid)
+  test <- data$test %>% dplyr::select(-brightenid)
   fitControl <- trainControl( method = "repeatedcv", number = 10, repeats = 5)
   lmFit <- train(response ~ ., data = train, method = "lm")
   predResp <- predict(lmFit$finalModel, newdata = test)
@@ -65,8 +66,8 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
                                 response=response, trainUsers=users$trainUsers, 
                                 testUsers = users$testUsers, 
                                 include_N_weeks_testData_in_training=week)
-      train <- df$train %>% dplyr::select(-user_id)
-      test <- df$test %>% dplyr::select(-user_id)
+      train <- df$train %>% dplyr::select(-brightenid)
+      test <- df$test %>% dplyr::select(-brightenid)
       if(is.numeric(train$response) == T){
         #Continuous Response
         rfFit <-  ranger(response ~ ., data=train)
@@ -87,6 +88,7 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
 numRepeats=100
 numWeeks = 6
 set.seed(747845)
+passiveFeatures
 
 #2.  predict PHQ2 // using passive features 
 pred_phq2_passive <- tmpFun_runRandomForest(passiveFeatures,
@@ -135,12 +137,14 @@ pred_phq2_passive['type'] = 'passive'
 pred_phq2_demog['type'] = 'demog'
 pred_phq2_demog_plus_baselinePHQ9['type'] = 'demog + baselinePHQ9'
 pred_phq2_demog_plus_baselinePHQ9_plus_passive['type'] = 'demog + baselinePHQ9 + passive'
-pred_phq2_regress <- rbind(pred_phq2_demog, 
+pred_phq2_regress <- rbind(pred_phq2_demog,
+                           pred_phq2_passive,
                            pred_phq2_demog_plus_baselinePHQ9,
                            pred_phq2_demog_plus_baselinePHQ9_plus_passive)
 p1 <- ggplot(data=pred_phq2_regress, aes(x=as.factor(week), fill=type, y=testRsq)) + geom_boxplot() + theme_bw()  
 p1 <- p1 + scale_fill_manual(values=c('#4D71A2', '#C4AA25', '#8F2D56', '#49A655')) + theme(text = element_text(size=10))
 p1 <- p1 + xlab('weeks of training data looked at for test cases') + ylab('test r-squared (random forest)')
+p1
 ggsave("plots/RF_PHQ2_regression_pred_results.png", p1, width=7, height=3, units="in", dpi=100)
 
 

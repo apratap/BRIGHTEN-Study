@@ -10,6 +10,8 @@ library("printr")
 library("ggthemes")
 synapseLogin()
 
+source("HARDCODED_VARS.R")
+
 #1. Get data
 #metadata
 metaData  <- fread(synGet("syn10236547")@filePath, data.table = F) 
