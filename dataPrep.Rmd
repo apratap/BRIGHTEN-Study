@@ -17,9 +17,8 @@ library("reshape2")
 library("knitr")
 library("ggpubr")
 library("ggthemes")
-options(stringsAsFactors = F,
-        Sys.setenv(TZ='GMT'))
-
+options(stringsAsFactors = F)
+Sys.setenv(TZ='GMT')
 knitr::opts_chunk$set(echo = F,  message=FALSE, warning=FALSE)
 knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
 ```
@@ -34,6 +33,7 @@ phq9 <- phq9 %>% mutate(phq10 = as.numeric(  as.character(plyr::revalue(phdis, r
   mutate(sum_phq9 = phq9, start =lubridate::ymd(start)) %>% 
   mutate(sum_phq10 = sum_phq9 + phq10,
          study_arm = gsub('-.*','',brightenid),
+         user_id = paste0('uid', user_id),
          phq9ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% select(user_id, brightenid, study_arm, start, week, phq9ResponseTimeSecs, sum_phq9, sum_phq10)
 
 
@@ -42,24 +42,32 @@ phq2 <- read.xls(synGet('syn10250486')@filePath)
 phq2$sum_phq2 = rowSums(phq2[,c(10,11)])
 phq2[,c(9,10,11,12)] <- NULL
 phq2 <- phq2 %>%  
-  mutate(phq2_date_local = as.Date(lubridate::ymd_hms(sent_time_local)),
+  mutate(user_id = paste0('uid', user_id),
+         phq2_date_local = as.Date(lubridate::ymd_hms(sent_time_local)),
          day = day + 1,
          start = lubridate::ymd(start),
          phq2ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% 
   select(user_id, phq2_date_local, start, day, phq2ResponseTimeSecs, sum_phq2)
 
-
 #GingerIO data
 passive_data <- fread(synGet('syn5908849')@filePath, data.table = F)
 colnames(passive_data) <- tolower(gsub(' ', '_',colnames(passive_data)))
-passive_data <- passive_data  %>% mutate(passive_date_pacific = as.Date(lubridate::ymd_hms(start))) %>%  
+passive_data <- passive_data  %>% 
+  mutate(user_id = paste0('uid', user_id),
+         passive_date_pacific = as.Date(lubridate::ymd_hms(start))) %>%  
   select(-end, -start)
+#Delete rows where all passive features are NA
+tmp_passiveData <- passive_data[, c('unreturned_calls', 'mobility', 'sms_length', 'call_duration',
+                 'interaction_diversity', 'missed_interactions' ,'aggregate_communication',
+                 'sms_count', 'mobility_radius', 'call_count')]
+rows_to_keep <- !rowSums(is.na(tmp_passiveData)) == ncol(tmp_passiveData)
+passive_data <- passive_data[rows_to_keep,]
 #getting the participant start dates from PHQ2 data
-passive_data <- merge(passive_data, phq2_start_dates, all.x = T)
+# passive_data <- merge(passive_data, phq2_start_dates, all.x = T)
 
 passive_metadata <- fread(synGet('syn5908850')@filePath, data.table = F)
 colnames(passive_metadata) <- gsub(' ', '_',colnames(passive_metadata))
-passive_metadata <- passive_metadata %>% mutate(brightenid = Participant_ID) %>%
+passive_metadata <- passive_metadata %>% mutate(brightenid = Participant_ID, user_id = paste0('uid', user_id)) %>%
   select(-SMS_Count, -Location_Count, -Call_Count, -Participant_ID, -Timezone_at_Activation , -Participant_ID, -Survey_Completion_Percentage,
 -Group, -Profile_ID, -Activation_Status)
 passive_metadata['activation_date_local'] = passive_metadata['Activation_Date_(Local)']
@@ -68,9 +76,11 @@ passive_metadata['Activation_Date_(Local)'] <- NULL
 passive_metadata['Activation_Date_(UTC)'] <- NULL
 passive_metadata <- passive_metadata %>% 
   mutate(activation_date_local = as.Date(lubridate::ymd_hms(activation_date_local)),
-         activation_date_UTC = as.Date(lubridate::ymd_hms(activation_date_UTC)))
+         activation_date_UTC = as.Date(lubridate::ymd_hms(activation_date_UTC)),
+         study_arm = gsub('-.*','',brightenid)) %>%
+  dplyr::filter(study_arm %in% c('ORANGE', 'BLUE', 'GREEN', 'YELLOW'),
+                Cohort != '')
 passive_data <- merge(passive_data, passive_metadata, all.x=T)
-
 
 #### $NOTE$
 # The following code tells us that "activation_date_UTC" is the best column for # assuming the actual study start date across activities for individuals
@@ -89,7 +99,7 @@ passive_data <- passive_data %>%
   dplyr::mutate(day = as.numeric(passive_date_pacific-activation_date_UTC) + 1 ,
                 week = ((day - 1) %/% 7) + 1 ) %>%
   dplyr::mutate(start = activation_date_UTC)  %>%
-  dplyr::select(-activation_date_local, -activation_date_UTC, -phq2_start )
+  dplyr::select(-activation_date_local, -activation_date_UTC )
 
 #Study metadata
 study_metadata <- read.xls(synGet('syn10250485')@filePath)
@@ -97,16 +107,14 @@ study_metadata <- study_metadata %>%
   dplyr::mutate(brightenid = as.character(brightenid),
                 baseline_phq9 = PHQScore) %>%
   dplyr::select(-c(21:27, 36:43), -PHQScore)
-  
-#remove rows with >50 % missing meta data
-to_keep <- apply(study_metadata, 1, function(row) ( sum( is.na(row)) + sum(row == '', na.rm = T)) / length(row)) < .50
-study_metadata <-study_metadata[to_keep,]
 
 # extract master table user_id to brightenid
 userId_to_brigthenId <- rbind(phq9 %>% select(user_id, brightenid), 
                               passive_data %>% select(user_id, brightenid))
-      
 userId_to_brigthenId <- userId_to_brigthenId[!duplicated(userId_to_brigthenId),]
+userId_to_brigthenId <- userId_to_brigthenId %>% 
+  dplyr::filter( !(is.na(user_id) | user_id == '' | is.na(brightenid) | brightenid == '')) %>%
+  dplyr::mutate()
 
 #add user-id to study metadata table
 study_metadata <- merge(userId_to_brigthenId, study_metadata, all.y = T)
@@ -125,18 +133,14 @@ study_metadata <- study_metadata %>% dplyr::mutate(study_arm = plyr::revalue(Stu
 
 
 ```{r}
-#filter days in passive data where no passive feature is recorded  
-select_cols <- colnames(passive_data)[2:11]
-to_keep <- apply(passive_data[, select_cols], 1, function(row) (sum(is.na(row)) + sum(row == '', na.rm = T)) < length(row))
-passive_data <- passive_data[to_keep,]
-
 #add study grp to PHQ2
-phq2 <- merge(phq2, study_metadata[,c('user_id','study_arm')])
+phq2 <- merge(phq2, study_metadata[,c('brightenid','study_arm')])
 
 ### Add study arm info in ginger data
 temp_df <- rbind(phq9[,c('user_id','study_arm')],
                  study_metadata[, c('user_id', 'study_arm')])
 temp_df <- temp_df[!duplicated(temp_df),]
+temp_df <- temp_df %>% filter(! (is.na(user_id) | is.na(study_arm)))
 passive_data <- merge(passive_data, temp_df, all.x=T)
 passive_data <- passive_data %>% mutate(study_arm = as.factor(study_arm))
 ```

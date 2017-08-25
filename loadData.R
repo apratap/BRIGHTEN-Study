@@ -11,35 +11,44 @@ library("ggthemes")
 synapseLogin()
 
 #1. Get data
+#metadata
+metaData  <- fread(synGet("syn10236547")@filePath, data.table = F) 
+#str(metaData)
+n_distinct(metaData$brightenid)
+
 #passive data
 passive_data <- fread(synGet("syn10236538")@filePath, data.table = F) %>% 
   dplyr::mutate(day = as.numeric(day),
-                passive_date_pacific = as.Date(passive_date_pacific),
-                user_id = as.character(user_id)) %>%
+                passive_date_pacific = as.Date(passive_date_pacific)) %>%
   dplyr::filter(!study_arm %in% c(NA, '')) %>%
-  select(-brightenid, -Cohort, -User_Phone_Type, -study_arm) %>% as.data.frame()
+  select(-Cohort, -study_arm, -user_id) %>% 
+  dplyr::filter(brightenid %in% metaData$brightenid ) %>% as.data.frame()
+n_distinct(passive_data$brightenid)
 
 #PHQ2
 phq2  <- fread(synGet("syn10236539")@filePath, data.table = F) 
 phq2 <- phq2 %>% 
   dplyr::mutate(phq2_date_local = as.Date(phq2_date_local),
                 start = as.Date(start),
-                week = ((day - 1) %/% 7) + 1,
-                user_id = as.character(user_id)) %>%
+                week = ((day - 1) %/% 7) + 1) %>%
   filter(!study_arm %in% c(NA, '')) %>%
-  dplyr::select(-brightenid, -study_arm) 
+  dplyr::select(-study_arm, -user_id) %>%
+  dplyr::filter(brightenid %in% metaData$brightenid ) %>% as.data.frame()
+n_distinct(phq2$brightenid)
 
 #summarize more than one phq2 recording in a day
-phq2 <- phq2 %>% group_by(user_id, day, start) %>% 
+phq2 <- phq2 %>% dplyr::group_by(brightenid, day, start) %>% 
   summarise_all(.funs=function(x) mean(x, na.rm=T)) %>% as.data.frame()
+n_distinct(phq2$brightenid)
 
 #PHQ9
 phq9  <- fread(synGet("syn10236540")@filePath, data.table = F) 
-phq9 <- phq9 %>% dplyr::mutate(start = as.Date(start),user_id = as.character(user_id)) %>%
-  dplyr::select(-brightenid) 
+phq9 <- phq9 %>% dplyr::mutate(start = as.Date(start),
+                               user_id = as.character(user_id)) %>%
+  dplyr::filter(brightenid %in% metaData$brightenid ) %>% 
+  dplyr::select(-user_id) %>% as.data.frame()
+n_distinct(phq9$brightenid)
 
-#metadata
-metaData  <- fread(synGet("syn10236547")@filePath, data.table = F) 
 
 #2. MERGE - Passive features and PHQ2 (daily mood)
 # x <- passive_data %>% filter(user_id == '15919') %>% mutate(start = as.character(start))
@@ -56,13 +65,16 @@ metaData  <- fread(synGet("syn10236547")@filePath, data.table = F)
 # sum(complete.cases(res))
 # sum(complete.cases(res_imp))
 
-tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1)
+tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1) %>% 
+  select(-start)
 tmp_passive_data <- passive_data %>% mutate(start = as.character(start))
 intersect(colnames(tmp_passive_data), colnames(tmp_phq2))
 #str(tmp_passive_data)
 #str(tmp_phq2)
 ### Merged Passive and PHQ2 data
 passive_n_phq2 <- merge(tmp_passive_data, tmp_phq2, all.x=T, all.y=T)
+n_distinct(passive_n_phq2$brightenid)
+#str(passive_n_phq2)
 
 #######################
 #IMPUTE - Passive data
@@ -72,34 +84,38 @@ tmp_impute_col <- function(col){
   col[is.na(col)] = medVal
   col
 }
-sum(complete.cases(passive_n_phq2))
+#Without Imputation
+sum(complete.cases(passive_n_phq2[,c(PASSIVE_COL_NAMES) ]))
 
 # Step 1 - fill missing values based on the values in that week
-passive_n_phq2_with_imputed_vals <- passive_n_phq2  %>% group_by(user_id, week, start) %>%
-  mutate_all(.funs = tmp_impute_col )
-sum(complete.cases(passive_n_phq2_with_imputed_vals))
+passive_n_phq2_with_imputed_vals <- passive_n_phq2  %>% 
+  dplyr::group_by(brightenid, week, start) %>%
+  dplyr::mutate(unreturned_calls = tmp_impute_col(unreturned_calls),
+                mobility = tmp_impute_col(mobility),
+                sms_length = tmp_impute_col(sms_length),
+                missed_interactions = tmp_impute_col(missed_interactions),
+                aggregate_communication = tmp_impute_col(aggregate_communication),
+                sms_count = tmp_impute_col(sms_count),
+                mobility_radius = tmp_impute_col(mobility_radius),
+                call_count = tmp_impute_col(call_count),
+                phq2ResponseTimeSecs = tmp_impute_col(phq2ResponseTimeSecs),
+                sum_phq2 = tmp_impute_col(sum_phq2))
+
+sum(complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ]))
 
 
+to_keep <- complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ])
+passive_n_phq2_with_imputed_vals <- passive_n_phq2_with_imputed_vals[to_keep,]
+
+to_keep <- complete.cases(passive_n_phq2[,c(PASSIVE_COL_NAMES) ])
+passive_n_phq2 <- passive_n_phq2[to_keep,]
+
+
+#str(passive_n_phq2_with_imputed_vals)
 # x1 <- phq2  %>% dplyr::group_by(user_id) %>% dplyr::summarise(phq2_count = n())
 # x2 <- passive_data  %>% dplyr::group_by(user_id) %>% dplyr::summarise(passive_count = n())
 # x <- merge(x1,x2)
 # p1 <- ggplot(data=x, aes(x=phq2_count, y=passive_count)) + geom_point(size=.6) + scale_color_ptol("cyl") + theme_minimal()
-
-missingNess <- function(vec){
-  missingVals <- sum(is.na(vec)) + sum(vec == '', na.rm = T)
-  missingPercent <- (missingVals / length(vec)) * 100
-  return( round(missingPercent, digits=2) )
-}
-
-#missing data per user
-missingData <- passive_n_phq2 %>% dplyr::select(c(3:13,17), user_id, sum_phq2) %>% group_by(user_id) %>%
-  summarise_all(.funs=missingNess) 
-
-#Users who have atleast 5 features with less than 40% data missing
-keep_users <- missingData %>% select(-user_id) %>% apply(1, function(x) sum(x > 40))  < 5
-SELECTED_USERS <- missingData$user_id[keep_users]
-passive_n_phq2 <- passive_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
-
 
 
 # #num of data points per user 
@@ -122,28 +138,26 @@ passive_n_phq2 <- passive_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
 # ggsave("plots/quantile_plot_1.png", p1, width=4, height=3, units="in", dpi=200)
 # 
 
-
-#FINAL data with ImputedValues for Passive data
-FINAL_DATA_noImpute <- passive_n_phq2[complete.cases(passive_n_phq2),]
 #Add the metadata
-FINAL_DATA_noImpute <-  merge(FINAL_DATA_noImpute, metaData, all.x=T)
+FINAL_DATA_noImpute <-  merge(passive_n_phq2, metaData, all.x=T)
 #Add the PHQ9 data
 FINAL_DATA_noImpute <- FINAL_DATA_noImpute %>% dplyr::mutate(start = as.Date(start))
 FINAL_DATA_noImpute <- merge(FINAL_DATA_noImpute, phq9, all.x=T)
+n_distinct(FINAL_DATA_noImpute$brightenid)
+dim(FINAL_DATA_noImpute)
 
 #FINAL data with ImputedValues for Passive data
-FINAL_DATA_wImputedVals <- passive_n_phq2_with_imputed_vals[complete.cases(passive_n_phq2_with_imputed_vals),]
 #Add the metadata
-FINAL_DATA_wImputedVals <-  merge(FINAL_DATA_wImputedVals, metaData, all.x=T)
+FINAL_DATA_wImputedVals <-  merge(passive_n_phq2_with_imputed_vals, metaData, all.x=T)
+dim(FINAL_DATA_wImputedVals)
 #Add the PHQ9 data
 FINAL_DATA_wImputedVals <- FINAL_DATA_wImputedVals %>% dplyr::mutate(start = as.Date(start))
 FINAL_DATA_wImputedVals <- merge(FINAL_DATA_wImputedVals, phq9, all.x=T)
-
+n_distinct(FINAL_DATA_wImputedVals$brightenid)
+dim(FINAL_DATA_wImputedVals)
 
 #remove temp vars
-rm(keep_users, missingData, missingNess, passive_n_phq2_with_imputed_vals,
-   SELECTED_USERS, tmp_impute_col, tmp_passive_data, tmp_phq2)
-
-
+rm(passive_n_phq2_with_imputed_vals, passive_n_phq2,
+   tmp_impute_col, tmp_passive_data, tmp_phq2)
 
 ls()

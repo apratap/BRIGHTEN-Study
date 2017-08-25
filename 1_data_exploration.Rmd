@@ -13,6 +13,7 @@ output:
 --------
 
 ```{r setup, include=FALSE}
+rm(list=ls())
 library(data.table)
 library(gdata)
 library(synapseClient)
@@ -25,33 +26,16 @@ library("sjPlot")
 library("ggpubr")
 library("rbundle")
 library("pheatmap")
-synapseLogin()
-
 knitr::opts_chunk$set(echo = F,  message=FALSE, warning=FALSE)
 knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
 ```
 
 
 ```{r readData}
-phq2 <- fread(synGet("syn10236539")@filePath, data.table = F) %>% filter(week_in_study <= 12)
-phq9 <- fread(synGet("syn10236540")@filePath, data.table = F) %>% filter(week_in_study <= 13)
-passivefeatures <- fread(synGet("syn10236538")@filePath, data.table = F) %>% filter(week_in_study <= 12)
-mdata <- fread(synGet("syn10236547")@filePath, data.table = F)
+rm(list=ls())
+source("loadData.R")
+ls()
 ```
-
-##### Data Types
-* Longitudinal
-    + passive data collected through ginger.io app [data](https://www.synapse.org/#!Synapse:syn5908849)
-    + public health questionnaire [(PHQ9)](http://www.cqaimh.org/pdf/tool_phq9.pdf) [data](https://www.synapse.org/#!Synapse:syn5908857)
-    + public health questionnaire [(PHQ2)](http://www.cqaimh.org/pdf/tool_phq2.pdf) [data](https://www.synapse.org/#!Synapse:syn5908863)
-
-    
-```{r fig.align='center'}
-passive_vars <- data.frame( phoneUsage = c("SMS length", "SMS count",   "Call count","Call duration", "Unreturned calls"),
-Other = c("Mobility", "Mobility radius", "Interaction diversity","Missed interactions","Aggregate communication"))
-kable(passive_vars, row.names=F, align='l')
-```
-
 
 -------------------
 
@@ -190,127 +174,6 @@ ggsave("plots/feature_histograms.png", p7, width=4, height=4, units="in", dpi=30
 ```
 
 
-
-
-
-
-
-
-```{r}
-
-tmp_cor <- function(x,y){
-  to_del <- is.na(x) | is.na(y)
-  cor(x[!to_del],y[!to_del], method="spearman")
-}
-
-tmp_cor_test <- function(x,y){
-  to_del <- is.na(x) | is.na(y)
-  cor.test(x[!to_del],y[!to_del])['p.value']
-}
-
-phq2_feature_corr <- phq2_passiveFeatures_demog %>% group_by(user_id) %>%
-                       summarise(SMS_Length = tmp_cor(SMS_Length,sum_phq2),
-                                 Unreturned_Calls = tmp_cor(Unreturned_Calls, sum_phq2),
-                                 Call_Duration = tmp_cor(Call_Duration, sum_phq2),
-                                 Mobility = tmp_cor(Mobility, sum_phq2),
-                                 Interaction_Diversity = tmp_cor(Interaction_Diversity, sum_phq2),
-                                 Missed_Interactions = tmp_cor(Missed_Interactions, sum_phq2),
-                                 Aggregate_Communication = tmp_cor(Aggregate_Communication, sum_phq2),
-                                 SMS_Count = tmp_cor(SMS_Count, sum_phq2),
-                                 Mobility_Radius = tmp_cor(Mobility_Radius, sum_phq2),
-                                 Call_Count = tmp_cor(Call_Count, sum_phq2),
-                                 week_in_study = tmp_cor(week_in_study, sum_phq2))
-phq2_feature_corr$user_id <- NULL 
-pheatmap::pheatmap(phq2_feature_corr[complete.cases(phq2_feature_corr),], show_rownames=F, dendogram="none")
-
-
-
-phq9_feature_corr <- phq9_passiveFeatures_phq2 %>% group_by(user_id) %>%
-                       summarise(SMS_Length = tmp_cor(SMS_Length,sum_phq9),
-                                 Unreturned_Calls = tmp_cor(Unreturned_Calls, sum_phq9),
-                                 Call_Duration = tmp_cor(Call_Duration, sum_phq9),
-                                 Mobility = tmp_cor(Mobility, sum_phq9),
-                                 Interaction_Diversity = tmp_cor(Interaction_Diversity, sum_phq9),
-                                 Missed_Interactions = tmp_cor(Missed_Interactions, sum_phq9),
-                                 Aggregate_Communication = tmp_cor(Aggregate_Communication, sum_phq9),
-                                 SMS_Count = tmp_cor(SMS_Count, sum_phq9),
-                                 Mobility_Radius = tmp_cor(Mobility_Radius, sum_phq9),
-                                 Call_Count = tmp_cor(Call_Count, sum_phq9),
-                                 sum_phq2 = tmp_cor(sum_phq2, sum_phq9),
-                                 week_in_study = tmp_cor(week_in_study, sum_phq9))
-phq9_feature_corr$user_id <- NULL 
-pheatmap::pheatmap(phq9_feature_corr[complete.cases(phq9_feature_corr),], show_rownames=F, dendogram="none")
-
-individualFeatureTest <- function(individualUserData){
-  features <- c('SMS_Length', 'Call_Duration', 'Mobility', 'Interaction_Diversity',
-              'Aggregate_Communication', 'SMS_Count', 'Mobility_Radius', 'Call_Count')
-  pvals <- sapply(features, function(f){
-  tryCatch({
-    individualUserData[f] <- log10(individualUserData[f] + .001)
-    fit <- lm(paste0('sum_phq2 ~ ' , f), data=individualUserData)
-    summary(fit)$coefficients[2,4]
-  }, error = function(e){
-    NA
-  })
- })
-p.adjust(pvals, method = "fdr")
-}
-
-res <- ddply(.data=phq9_passiveFeatures_phq2, .variables = c('user_id'),
-      .fun = individualFeatureTest)
-res$user_id <- NULL
-res <- res[complete.cases(res),]
-pheatmap(res)
-```
-
-
-
-
-
-
-```{r}
-temp_user_plots <- function(users){
-  #users <- c('67633')
-  tmp_ginger_io_df <- passivefeatures %>% filter(user_id %in% users) %>% mutate(week_in_study = as.factor(week_in_study))
-  tmp_phq9 <- phq9 %>% filter(user_id %in% users)
-  tmp_phq2 <- phq2 %>% filter(user_id %in% users)
-  
-  #PHQ plots 
-  phq9_week <- ggplot(data=tmp_phq9 , aes(x=factor(week_in_study), y=sum_phq9)) + geom_boxplot(width=.5) + xlab('week in study') + theme_bw()
- phq2_week <- ggplot(data=tmp_phq2 , aes(x=factor(week_in_study), y=sum_phq2)) + geom_boxplot(width=.5) + xlab('week in study') + theme_bw()
- phq2_week
- 
- #passive data plots
-  p1  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Mobility_Radius))) + geom_boxplot() + theme_bw()
-  p2  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Call_Count))) + geom_boxplot() + theme_bw()
-  p3  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(SMS_Count))) + geom_boxplot() + theme_bw()
-  p4  <- ggplot(data=tmp_ginger_io_df, aes(x=week_in_study, y=log10(Call_Duration))) + geom_boxplot() + theme_bw()
-  multiplot(plotlist=list(phq9_week,p3,p2,phq2_week,p1,p4), cols=2)
-}
-```
-
-### Participant Specific plots (N=1)
-Choosen using a simple peronsalized linear model for each user
-
-####Participant 1 - 67633
-```{r, fig.width=8, fig.height=6}
-temp_user_plots('67633') 
-```
-
-####Participant 2 - 16261
-```{r, fig.width=8, fig.height=6}
-temp_user_plots('16261') 
-```
-
-```{r, fig.width=8, fig.height=6, eval=F}
-####Participant 3 - 34727
-temp_user_plots('34727') 
-```
-
-```{r, fig.width=8, fig.height=6, eval=F}
-####Participant 5 - 68974
-temp_user_plots('68974') 
-```
 
 
 
