@@ -24,7 +24,7 @@ passive_data <- fread(synGet("syn10236538")@filePath, data.table = F) %>%
                 passive_date_pacific = as.Date(passive_date_pacific)) %>%
   dplyr::filter(!study_arm %in% c(NA, '')) %>%
   select(-Cohort, -study_arm, -user_id) %>% 
-  dplyr::filter(brightenid %in% metaData$brightenid ) %>% as.data.frame()
+  dplyr::filter(brightenid %in% metaData$brightenid, week <= 12) %>% as.data.frame()
 n_distinct(passive_data$brightenid)
 
 #PHQ2
@@ -35,19 +35,20 @@ phq2 <- phq2 %>%
                 week = ((day - 1) %/% 7) + 1) %>%
   filter(!study_arm %in% c(NA, '')) %>%
   dplyr::select(-study_arm, -user_id) %>%
-  dplyr::filter(brightenid %in% metaData$brightenid ) %>% as.data.frame()
+  dplyr::filter(brightenid %in% metaData$brightenid, week <= 12) %>% as.data.frame()
 n_distinct(phq2$brightenid)
 
 #summarize more than one phq2 recording in a day
 phq2 <- phq2 %>% dplyr::group_by(brightenid, day, start) %>% 
-  summarise_all(.funs=function(x) mean(x, na.rm=T)) %>% as.data.frame()
+  summarise_all(.funs=function(x) mean(x, na.rm=T)) %>% 
+  dplyr::filter(week <= 12) %>% as.data.frame()
 n_distinct(phq2$brightenid)
 
 #PHQ9
 phq9  <- fread(synGet("syn10236540")@filePath, data.table = F) 
 phq9 <- phq9 %>% dplyr::mutate(start = as.Date(start),
                                user_id = as.character(user_id)) %>%
-  dplyr::filter(brightenid %in% metaData$brightenid ) %>% 
+  dplyr::filter(brightenid %in% metaData$brightenid, week <= 12) %>% 
   dplyr::select(-user_id) %>% as.data.frame()
 n_distinct(phq9$brightenid)
 
@@ -68,7 +69,7 @@ n_distinct(phq9$brightenid)
 # sum(complete.cases(res_imp))
 
 tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1) %>% 
-  select(-start)
+  select(-start, -week)
 tmp_passive_data <- passive_data %>% mutate(start = as.character(start))
 intersect(colnames(tmp_passive_data), colnames(tmp_phq2))
 #str(tmp_passive_data)
@@ -104,7 +105,6 @@ passive_n_phq2_with_imputed_vals <- passive_n_phq2  %>%
                 sum_phq2 = tmp_impute_col(sum_phq2))
 
 sum(complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ]))
-
 
 to_keep <- complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ])
 passive_n_phq2_with_imputed_vals <- passive_n_phq2_with_imputed_vals[to_keep,]
