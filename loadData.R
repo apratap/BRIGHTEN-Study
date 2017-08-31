@@ -1,16 +1,16 @@
 rm(list=ls())
+library("install.load")
+install_load("data.table", "gdata", "synapseClient")
+install_load("plyr", "tidyverse", "doMC", "scales")
+install_load("gridExtra", "pheatmap", "printr", "ggthemes")
 
-library(data.table)
-library(gdata)
-library(synapseClient)
-library(ggplot2)
-library("plyr")
-library("tidyverse")
-library("printr")
-library("ggthemes")
 synapseLogin()
 
-source("HARDCODED_VARS.R")
+#Hardcoded PASSIVE Features
+PASSIVE_COL_NAMES <- c('unreturned_calls', 'mobility', 'sms_length', 'call_duration',
+                       'interaction_diversity', 'missed_interactions' ,'aggregate_communication',
+                       'sms_count', 'mobility_radius', 'call_count')
+
 
 #1. Get data
 #metadata
@@ -53,6 +53,17 @@ phq9 <- phq9 %>% dplyr::mutate(start = as.Date(start),
 n_distinct(phq9$brightenid)
 
 
+
+#1. Keep data only for first 12 weeks of study
+phq2 <- phq2 %>% dplyr::filter(week <=12)
+phq9 <- phq9 %>% dplyr::filter(week <=12)
+passive_data <- passive_data %>% dplyr::filter(week <=12)
+
+
+####Filter the passive data to ANDROID users only
+FINAL_ANDROID_USERS <- passive_data %>% filter(User_Phone_Type != 'iPhone') %>% .$brightenid %>% unique() 
+n_distinct(FINAL_ANDROID_USERS)
+
 #2. MERGE - Passive features and PHQ2 (daily mood)
 # x <- passive_data %>% filter(user_id == '15919') %>% mutate(start = as.character(start))
 # y <- phq2 %>% filter(user_id == '15919') %>% mutate(start = as.character(start),
@@ -68,9 +79,11 @@ n_distinct(phq9$brightenid)
 # sum(complete.cases(res))
 # sum(complete.cases(res_imp))
 
-tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1) %>% 
+tmp_phq2 <- phq2 %>%  filter(brightenid %in% FINAL_ANDROID_USERS) %>%
+  mutate(start = as.character(start), day = day-1) %>% 
   select(-start, -week)
-tmp_passive_data <- passive_data %>% mutate(start = as.character(start))
+tmp_passive_data <- passive_data %>% filter(brightenid %in% FINAL_ANDROID_USERS) %>%
+  mutate(start = as.character(start))
 intersect(colnames(tmp_passive_data), colnames(tmp_phq2))
 #str(tmp_passive_data)
 #str(tmp_phq2)
@@ -103,7 +116,6 @@ passive_n_phq2_with_imputed_vals <- passive_n_phq2  %>%
                 call_count = tmp_impute_col(call_count),
                 phq2ResponseTimeSecs = tmp_impute_col(phq2ResponseTimeSecs),
                 sum_phq2 = tmp_impute_col(sum_phq2))
-
 sum(complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ]))
 
 to_keep <- complete.cases(passive_n_phq2_with_imputed_vals[,c(PASSIVE_COL_NAMES) ])
@@ -112,6 +124,8 @@ passive_n_phq2_with_imputed_vals <- passive_n_phq2_with_imputed_vals[to_keep,]
 to_keep <- complete.cases(passive_n_phq2[,c(PASSIVE_COL_NAMES) ])
 passive_n_phq2 <- passive_n_phq2[to_keep,]
 
+n_distinct(passive_n_phq2_with_imputed_vals$brightenid)
+n_distinct(passive_n_phq2$brightenid)
 
 #str(passive_n_phq2_with_imputed_vals)
 # x1 <- phq2  %>% dplyr::group_by(user_id) %>% dplyr::summarise(phq2_count = n())
@@ -142,6 +156,7 @@ passive_n_phq2 <- passive_n_phq2[to_keep,]
 
 #Add the metadata
 FINAL_DATA_noImpute <-  merge(passive_n_phq2, metaData, all.x=T)
+n_distinct(FINAL_DATA_noImpute$brightenid)
 #Add the PHQ9 data
 FINAL_DATA_noImpute <- FINAL_DATA_noImpute %>% dplyr::mutate(start = as.Date(start))
 FINAL_DATA_noImpute <- merge(FINAL_DATA_noImpute, phq9, all.x=T)
