@@ -16,13 +16,13 @@ ls()
 source("ML_methods.R")
 
 ### After all the imputation remove users with < 40 days worth of data
-final_df <- FINAL_DATA_wImputedVals %>% dplyr::filter(week <= 12) %>% dplyr::select(-phq2_date_local)
+final_df <- FINAL_DATA_wImputedVals %>% dplyr::select(-phq2_date_local)
 numData_per_user<- final_df %>% dplyr::group_by(brightenid) %>% dplyr::summarise(n = n())
 quantile(numData_per_user$n, probs=seq(0,1,.1))
-selected_users <- numData_per_user %>% filter(n >= 40) %>% .$brightenid
+selected_users <- numData_per_user %>% filter(n >= 30) %>% .$brightenid
 final_df <- final_df %>% filter(brightenid %in% selected_users)
 
-passiveFeatures <- colnames(final_df)[c(6:15,18)]
+passiveFeatures <- PASSIVE_COL_NAMES
 sesFeatures <- c("Age", "Gender", "education", "employed", "marital", "race",
                  "hispanic", "minority")
 
@@ -33,11 +33,13 @@ final_df['phq2_class'] = 'low'
 final_df$phq2_class[final_df$sum_phq2 >= 3] = 'high'
 
 
+NUM_WEEKS_TRAINING = 4
+
 ##### Predict PHQ2 - using passive data
 #1. Simple Linear Model
 set.seed(35453)
 users <- get_train_test_users(final_df)
-lm_output <- ldply(0:6, function(week){
+lm_output <- ldply(0:NUM_WEEKS_TRAINING, function(week){
   data <- get_train_test_data(predictors=c(passiveFeatures), masterData = final_df,
                               response='sum_phq2', trainUsers=users$trainUsers, 
                               testUsers = users$testUsers, 
@@ -86,15 +88,13 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
 }
 
 numRepeats=100
-numWeeks = 6
 set.seed(747845)
-passiveFeatures
 
 #2.  predict PHQ2 // using passive features 
 pred_phq2_passive <- tmpFun_runRandomForest(passiveFeatures,
                                             response = 'sum_phq2', 
                                             masterData = final_df, 
-                                            numRepeats=numRepeats, numWeeks = numWeeks)
+                                            numRepeats=numRepeats, numWeeks = NUM_WEEKS_TRAINING)
 # pred_phq2Class_passive <- tmpFun_runRandomForest(passiveFeatures,
 #                                             response = 'phq2_class', 
 #                                             masterData = final_df, 
@@ -105,7 +105,7 @@ pred_phq2_passive <- tmpFun_runRandomForest(passiveFeatures,
 #3. predict PHQ2 using demographics ONLY features?
 pred_phq2_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='sum_phq2',
                                           masterData=final_df,
-                                          numRepeats=numRepeats, numWeeks = numWeeks)
+                                          numRepeats=numRepeats, numWeeks = NUM_WEEKS_TRAINING)
 # pred_phq2Class_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='phq2_class',
 #                                                masterData=final_df,
 #                                                numRepeats=numRepeats, numWeeks = numWeeks)
@@ -115,13 +115,13 @@ pred_phq2_demog <- tmpFun_runRandomForest(predictors=sesFeatures, response='sum_
 pred_phq2_demog_plus_baselinePHQ9 <- tmpFun_runRandomForest(predictors=c(sesFeatures, 'baseline_phq9'),
                                                             response='sum_phq2',
                                                             masterData=final_df,
-                                                            numRepeats=numRepeats, numWeeks = numWeeks)
+                                                            numRepeats=numRepeats, numWeeks = NUM_WEEKS_TRAINING)
 
 #5. predict PHQ2 // using demographics + baselinePHQ9 + passive
 pred_phq2_demog_plus_baselinePHQ9_plus_passive <- tmpFun_runRandomForest(predictors = c(passiveFeatures, sesFeatures, 'baseline_phq9'),
                                                        response = 'sum_phq2',
                                                        masterData = final_df,
-                                                       numRepeats=numRepeats, numWeeks = numWeeks)
+                                                       numRepeats=numRepeats, numWeeks = NUM_WEEKS_TRAINING)
 
 # pred_phq2Class_passive_plus_demog <- tmpFun_runRandomForest(predictors = c(passiveFeatures,
 #                                                                            sesFeatures),
@@ -138,14 +138,13 @@ pred_phq2_demog['type'] = 'demog'
 pred_phq2_demog_plus_baselinePHQ9['type'] = 'demog + baselinePHQ9'
 pred_phq2_demog_plus_baselinePHQ9_plus_passive['type'] = 'demog + baselinePHQ9 + passive'
 pred_phq2_regress <- rbind(pred_phq2_demog,
-                           pred_phq2_passive,
                            pred_phq2_demog_plus_baselinePHQ9,
                            pred_phq2_demog_plus_baselinePHQ9_plus_passive)
 p1 <- ggplot(data=pred_phq2_regress, aes(x=as.factor(week), fill=type, y=testRsq)) + geom_boxplot() + theme_bw()  
 p1 <- p1 + scale_fill_manual(values=c('#4D71A2', '#C4AA25', '#8F2D56', '#49A655')) + theme(text = element_text(size=10))
 p1 <- p1 + xlab('weeks of training data looked at for test cases') + ylab('test r-squared (random forest)')
 p1
-ggsave("plots/RF_PHQ2_regression_pred_results.png", p1, width=7, height=3, units="in", dpi=100)
+ggsave("plots/RF_PHQ2_regression_pred_results.png", p1, width=7, height=4, units="in", dpi=200)
 
 
 # #PHQ2 classification results
