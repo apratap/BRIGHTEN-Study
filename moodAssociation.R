@@ -1,42 +1,37 @@
 rm(list=ls())
-library(ggplot2)
-library("plyr")
-library("tidyverse")
-library("printr")
-library("ggthemes")
-library("scales")
-library("lmerTest")
+library("install.load")
+install_load("data.table", "gdata", "ggplot2", "ggthemes")
+install_load("plyr", "tidyverse", "doMC", "scales")
+install_load("geepack", "pheatmap", "texreg")
 
 #load data
 source("loadData.R")
 
-final_df <- FINAL_DATA
-final_df <- FINAL_DATA %>% dplyr::filter(week <= 12)
-colnames(final_df)
-passiveFeatures <- colnames(final_df)[c(6:15,18)]
-
+final_df <- FINAL_DATA_wImputedVals
 
 #users with atleast 30 values
-tmp <- final_df %>% select(user_id, passiveFeatures)
+tmp <- final_df %>% select(brightenid, PASSIVE_COL_NAMES)
 tmp <- tmp[!duplicated(tmp),]
-selected_users <- tmp %>% group_by(user_id) %>% summarise(n=n()) %>% filter(n >=30) %>% .$user_id %>% unique()
-
+selected_users <- tmp %>% group_by(brightenid) %>% summarise(n=n()) %>% filter(n >=30) %>% .$brightenid %>% unique()
+selected_users
 
 ### Using GEE
-library(geepack)
 #ref - https://www.unc.edu/courses/2010spring/ecol/562/001/docs/lectures/lecture14.htm
-data_for_GEE <- final_df %>% filter(user_id %in% selected_users) %>%
-  group_by(user_id) %>% 
-  arrange(user_id, week, day) %>% 
+data_for_GEE <- final_df %>% filter(brightenid %in% selected_users) %>%
+  group_by(brightenid) %>% 
+  arrange(brightenid, week, day) %>% 
   mutate(wave = 1:n()) %>%
-  as.data.frame()
+  as.data.frame() %>%
+  mutate(brightenid = as.factor(brightenid))
+
+str(data_for_GEE)
 
 mod_GEE_passiveData <- geeglm(sum_phq2 ~ unreturned_calls + mobility + sms_length +
                              call_duration + interaction_diversity + missed_interactions +
                              missed_interactions + aggregate_communication + sms_count +
                              mobility_radius + call_count + Age + Gender, 
-                           id=user_id, waves=wave,
-                           corstr="exchangeable", data=data_for_GEE)
+                           id=brightenid, waves=wave,
+                           corstr="ar1", data=data_for_GEE)
 summary(mod_GEE_passiveData)
 texreg::htmlreg(texreg::extract(mod_GEE_passiveData),
                 custom.model.names = c("effect size (s.e)"),
