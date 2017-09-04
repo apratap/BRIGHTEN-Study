@@ -34,18 +34,32 @@ pheatmap::pheatmap(phq2_spread, cluster_cols = F)
 #### Mannualy selected cases
 #RED-00263
 #BLUE-00264
-CASES <- c("YELLOW-00112" , "YELLOW-00171",
-           "GREEN-00097", "YELLOW-00063",
-           "YELLOW-00195", "ORANGE-00014")
+CASE_1_HIGH_DAILY_VARIBILITY <- c("YELLOW-00112" , "YELLOW-00171")
+CASE_2_NO_DAILY_VARIBILITY <- c("GREEN-00097", "YELLOW-00063")
+CASE_3_DIRECTIONAL_CHANGE <- c("YELLOW-00195", "ORANGE-00014")
 single_user_plot <- function(df){
-  p1 <- ggplot(data=df, aes(x=day, y=sum_phq2)) + geom_point(size=.5) + geom_line() + geom_smooth() 
-  p1 + theme_bw() + ylab('PHQ-2') + ggtitle(unique(df$brightenid)) + scale_y_continuous(limits = c(0,10))
+  p1 <- ggplot(data=df, aes(x=day, y=sum_phq2)) + geom_point(size=.2) + geom_line(size=.5) + geom_smooth() 
+  p1 + theme_bw() + ylab('PHQ-2') + scale_y_continuous(limits = c(0,10))
 }
-user_mood_plots <- lapply(CASES, function(id){
+
+p1_CASE_1_HIGH_DAILY_VARIBILITY <- lapply(CASE_1_HIGH_DAILY_VARIBILITY, function(id){
   d1 <- phq2 %>% filter(brightenid == id)
-  single_user_plot(d1)  
+  single_user_plot(d1)
 })
-combinedPlots <- gridExtra::grid.arrange(grobs=user_mood_plots)
-ggsave(filename = "plots/PHQ2_recordings_N.png", combinedPlots,  width=6.5, height =6.5, dpi=200)
+p1 <- grid.arrange(grobs = p1_CASE_1_HIGH_DAILY_VARIBILITY, ncol=2, top="high daily mood variability" )
+
+p2_CASE_2_NO_DAILY_VARIBILITY <- lapply(CASE_2_NO_DAILY_VARIBILITY, function(id){
+  d1 <- phq2 %>% filter(brightenid == id)
+  single_user_plot(d1)
+})
+p2 <- grid.arrange(grobs = p2_CASE_2_NO_DAILY_VARIBILITY, ncol=2, top="no mood variability" )
+
+p3_CASE_3_DIRECTIONAL_CHANGE <- lapply(CASE_3_DIRECTIONAL_CHANGE, function(id){
+  d1 <- phq2 %>% filter(brightenid == id)
+  single_user_plot(d1)
+})
+p3 <- grid.arrange(grobs = p3_CASE_3_DIRECTIONAL_CHANGE, ncol=2, top="directional change over time" )
+p <- grid.arrange(p1, p2, p3)
+ggsave(filename = "plots/PHQ2_recordings_N.png", p,  width=6.5, height =6.5, dpi=200)
 
 
