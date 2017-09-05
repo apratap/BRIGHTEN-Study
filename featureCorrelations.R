@@ -8,29 +8,31 @@ install_load("pheatmap", "RColorBrewer", "wesanderson")
 source("loadData.R")
 ls()
 
-df <- FINAL_DATA_wImputedVals  %>% select(c(PASSIVE_COL_NAMES, 'sum_phq2', 'sum_phq9'))
+df <- FINAL_DATA_wImputedVals  %>% select(c(PASSIVE_COL_NAMES, 'sum_phq2'))
 df <- df[complete.cases(df),]
-View(df)
 df[, PASSIVE_COL_NAMES] = log(df[, PASSIVE_COL_NAMES] + .0001)
 M <- cor(df, method="spearman")
-cor.mtest <- function(mat, conf.level = 0.95, method="spearman"){
-  mat <- as.matrix(mat)
-  n <- ncol(mat)
-  p.mat <- lowCI.mat <- uppCI.mat <- matrix(NA, n, n)
-  diag(p.mat) <- 0
-  diag(lowCI.mat) <- diag(uppCI.mat) <- 1
-  for(i in 1:(n-1)){
-    for(j in (i+1):n){
-      tmp <- cor.test(mat[,i], mat[,j], conf.level = conf.level, method=method)
-      p.mat[i,j] <- p.mat[j,i] <- tmp$p.value
-      lowCI.mat[i,j] <- lowCI.mat[j,i] <- tmp$conf.int[1]
-      uppCI.mat[i,j] <- uppCI.mat[j,i] <- tmp$conf.int[2]
-    }
-  }
-  return(list(p.mat, lowCI.mat, uppCI.mat))
-}
-cor_test_values <- cor.mtest(df) # not working
-corrplot(M, order="hclust", addrect = 4, mar=c(0,3,0,3))
+# cor.mtest <- function(mat, conf.level = 0.95, method="spearman"){
+#   mat <- as.matrix(mat)
+#   n <- ncol(mat)
+#   p.mat <- lowCI.mat <- uppCI.mat <- matrix(NA, n, n)
+#   diag(p.mat) <- 0
+#   diag(lowCI.mat) <- diag(uppCI.mat) <- 1
+#   for(i in 1:(n-1)){
+#     for(j in (i+1):n){
+#       tmp <- cor.test(mat[,i], mat[,j], conf.level = conf.level, method=method)
+#       p.mat[i,j] <- p.mat[j,i] <- tmp$p.value
+#       lowCI.mat[i,j] <- lowCI.mat[j,i] <- tmp$conf.int[1]
+#       uppCI.mat[i,j] <- uppCI.mat[j,i] <- tmp$conf.int[2]
+#     }
+#   }
+#   return(list(p.mat, lowCI.mat, uppCI.mat))
+# }
+# cor_test_values <- cor.mtest(df) # not working
+mar.default <- c(5,4,4,2) + 0.1
+png('plots/feature_correlations.png')
+corrplot(M, order="hclust", addrect = 4, mar=c(0, 1, 0, 0))
+dev.off()
 
 
 ######
