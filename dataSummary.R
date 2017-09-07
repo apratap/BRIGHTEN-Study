@@ -72,21 +72,21 @@ stargazer::stargazer(tmp_passiveData,
 phq2Compliance <- phq2  %>%
   dplyr::group_by(week) %>% 
   dplyr::summarise(n = length(unique(brightenid)) / dplyr::n_distinct(FINAL_ANDROID_USERS)) %>%
-  tibble::add_row(week='0', n=1.00) %>%
+  #tibble::add_row(week='0', n=1.00) %>%
   mutate(task = 'PHQ-2')
 
 #Passive data
 passiveDataCompliance <- passive_data %>%
   dplyr::group_by(week) %>% 
   dplyr::summarise(n = length(unique(brightenid)) / dplyr::n_distinct(FINAL_ANDROID_USERS)) %>%
-  tibble::add_row(week='0', n=1.00) %>%
+  #tibble::add_row(week='0', n=1.00) %>%
   mutate(task = 'passive data')
 
 #PHQ9
 phq9Compliance <- phq9  %>% 
   dplyr::group_by(week) %>% 
   dplyr::summarise(n = length(unique(brightenid)) / dplyr::n_distinct(FINAL_ANDROID_USERS))   %>%
-  tibble::add_row(week='0', n=1.00) %>%
+  #tibble::add_row(week='0', n=1.00) %>%
   mutate(task = 'PHQ-9')
 
 compliance <- rbind(phq2Compliance, passiveDataCompliance, phq9Compliance) %>% as.data.frame()
