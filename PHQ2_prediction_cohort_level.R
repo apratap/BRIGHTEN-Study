@@ -4,9 +4,7 @@ install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
 install_load("ranger", "caret", "printr", "ggthemes")
 
-registerDoMC(detectCores()-4)
-
-source("HARDCODED_VARS.R")
+registerDoMC(detectCores())
 
 #load data
 source("loadData.R")
@@ -15,25 +13,32 @@ ls()
 #load ML methods
 source("ML_methods.R")
 
-### After all the imputation remove users with < 40 days worth of data
+colnames(FINAL_DATA_wImputedVals)
+
+### After all the imputation remove users with < 15 days worth of data
 final_df <- FINAL_DATA_wImputedVals %>% dplyr::select(-phq2_date_local)
 numData_per_user<- final_df %>% dplyr::group_by(brightenid) %>% dplyr::summarise(n = n())
 quantile(numData_per_user$n, probs=seq(0,1,.1))
-selected_users <- numData_per_user %>% filter(n >= 30) %>% .$brightenid
+selected_users <- numData_per_user %>% filter(n >= 15) %>% .$brightenid
+
 final_df <- final_df %>% filter(brightenid %in% selected_users)
 
-passiveFeatures <- PASSIVE_COL_NAMES
+passiveFeatures <- c(PASSIVE_COL_NAMES, paste0(PASSIVE_COL_NAMES, '_dev'))
 sesFeatures <- c("Age", "Gender", "education", "employed", "marital", "race",
                  "hispanic", "minority")
 
 #log transform passive data
 #final_df[, passiveFeatures] <- log10(final_df[, passiveFeatures] + .001)
 
-final_df['phq2_class'] = 'low'
-final_df$phq2_class[final_df$sum_phq2 >= 3] = 'high'
+final_df['phq2_class'] = 'mild'
+final_df$phq2_class[final_df$sum_phq2 >= 2] = 'high'
+
+
 
 
 NUM_WEEKS_TRAINING = 4
+
+week = 1
 
 ##### Predict PHQ2 - using passive data
 #1. Simple Linear Model
@@ -47,6 +52,9 @@ lm_output <- ldply(0:NUM_WEEKS_TRAINING, function(week){
   train <- data$train %>% dplyr::select(-brightenid)
   test <- data$test %>% dplyr::select(-brightenid)
   fitControl <- trainControl( method = "repeatedcv", number = 10, repeats = 5)
+  
+  str(train)
+  
   lmFit <- train(response ~ ., data = train, method = "lm")
   predResp <- predict(lmFit$finalModel, newdata = test)
   testRMSE <- sqrt(mean((test$response - predResp)^2))
@@ -58,8 +66,9 @@ lm_output <- ldply(0:NUM_WEEKS_TRAINING, function(week){
 lm_output
 
 
-#2. Random Forest
-tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=10,
+
+# FUNCTION to run Random Forest
+tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=numRepeats,
                                    numWeeks=4){
   ldply(c(1:numRepeats), .parallel = T, function(run){
     users <- get_train_test_users(masterData)
@@ -88,7 +97,9 @@ tmpFun_runRandomForest <- function(predictors, response, masterData, numRepeats=
   })
 }
 
-numRepeats=100
+
+
+numRepeats=10
 set.seed(747845)
 
 #2.  predict PHQ2 // using passive features 

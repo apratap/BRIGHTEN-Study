@@ -42,9 +42,33 @@ sd(metaData$Age, na.rm = T)
 #Male vs Female
 prop.table(table(metaData$Gender))
 
+#Employed
+prop.table(table(metaData$employed))
+
+
+#Hispanic
+prop.table(table(metaData$hispanic))
+
+#Income
+prop.table(table(metaData$income1))
+
+#Race
+prop.table(table(metaData$race))
+
+
+#Mean enrollment PHQ9
+mean(metaData$baseline_phq9, na.rm=T)
+sd(metaData$baseline_phq9, na.rm=T)
+
 #Main daily mood
 mean(phq2$sum_phq2, na.rm = T)
 sd(phq2$sum_phq2, na.rm = T)
+
+
+#Prop of Android users
+tmp <- passive_data %>% select(User_Phone_Type, brightenid)
+tmp <- tmp[!duplicated(tmp),]
+table(tmp$User_Phone_Type)
 
 #order data frame by mean of each column
 meanVals <- passive_data %>% select(-User_Phone_Type, -brightenid, -passive_date_pacific,
@@ -90,11 +114,12 @@ phq9Compliance <- phq9  %>%
   mutate(task = 'PHQ-9')
 
 compliance <- rbind(phq2Compliance, passiveDataCompliance, phq9Compliance) %>% as.data.frame()
-p <- ggplot(data=compliance, aes(x=factor(week, levels=c(0:12)), y=n*100, color=task, group=task)) + geom_point(size=1) + geom_line()
-p <- p + theme_bw() + ylab('percent participants') + xlab('study period (week 0-12)')
+p <- ggplot(data=compliance, aes(x=factor(week, levels=c(1:12)), y=n*100, color=task, group=task)) + geom_point(size=1.5) + geom_line(size=1)
+p <- p + theme_bw() + ylab('percent') + xlab('study period (week 1-12)') + theme(text=element_text(size=10))
 p <- p + scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + ylim(0,100) 
 p
-ggsave("plots/compliance_plot2.png", width=5, height=3, units="in", dpi=200)
+ggsave("plots/compliance_plot2.png", width=5, height=3, units="in", dpi=150)
+ggsave("plots/compliance_plot2.tiff", width=5, height=3, units="in", dpi=150)
 
 
 #######
