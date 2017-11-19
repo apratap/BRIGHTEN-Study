@@ -4,8 +4,9 @@ install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
 install_load("ranger", "caret", "printr", "ggthemes")
 install_load("broom", "purrr", "gridExtra", "pheatmap")
-install_load("ranger")
+install_load("ranger", "doMC")
 
+detectCores()
 registerDoMC(detectCores()-1)
 library("synapseClient")
 
@@ -15,7 +16,6 @@ source("loadData.R")
 #load ML methods
 source("ML_methods.R")
 ls()
-
 
 final_df <- FINAL_DATA_wImputedVals 
 final_df['phq2_class'] = 'low'
@@ -79,7 +79,6 @@ selected_user_order <- pred_PHQ2_Nof1_passiveFeatures %>%
   dplyr::arrange(medVal) %>% .$brightenid %>%
   as.character()
 
-
 pred_PHQ2_Nof1_passiveFeatures <- pred_PHQ2_Nof1_passiveFeatures %>% 
   mutate(brightenid = as.character(brightenid)) %>%
   mutate(brightenid = factor(brightenid, levels=selected_user_order))
@@ -132,8 +131,6 @@ dim(median_stats %>% filter(medVal > .5))
 dim(median_stats %>% filter(medVal > .8))
 
 
-View(median_stats)
-
 selected_user_order <- pred_PHQ2Class_Nof1_passiveFeatures %>%
   dplyr::group_by(brightenid) %>%
   dplyr::summarise(medVal = median(auc, na.rm=T)) %>% dplyr::filter(!is.na(medVal)) %>%
@@ -151,7 +148,8 @@ p1 <- p1 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw(
         axis.title.x = element_text(size = rel(1.3)),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
-ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=4, height=7, dpi=200, units="in")
+p1
+ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=4, height=7, dpi=150, units="in")
 
 
 
@@ -196,6 +194,7 @@ p1 <- p1 + theme_bw() + xlab("passive feature type") + ylab('variable importance
   theme(axis.text = element_text(size=11),
         axis.title.y = element_text(size = rel(1.2)),
         axis.title.x = element_text(size = rel(1.2)))
+p1
 ggsave("plots/predict_PHQ2Class_variableImportance.png", p1, width=6.5, height=6.5, dpi=200, units="in")
 
 
