@@ -133,10 +133,6 @@ pheatmap::pheatmap(individual_cor_values,
 # 
 
 
-
-
-
-
 ggscatter(phq9_feature_cor_by_user, x = "cor", y = "Age",
           color = "black", shape = 21, size = 1, # Points color, shape and size
           add = "reg.line",  # Add regressin line
