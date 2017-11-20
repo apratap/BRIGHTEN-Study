@@ -4,7 +4,6 @@ install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
 install_load("gridExtra", "pheatmap", "printr", "ggthemes", "stargazer")
 
-
 #Data Summary
 source("loadData.R")
 ls()
@@ -114,13 +113,17 @@ phq9Compliance <- phq9  %>%
   mutate(task = 'PHQ-9')
 
 compliance <- rbind(phq2Compliance, passiveDataCompliance, phq9Compliance) %>% as.data.frame()
-p <- ggplot(data=compliance, aes(x=factor(week, levels=c(1:12)), y=n*100, color=task, group=task)) + geom_point(size=1.5) + geom_line(size=1)
+p <- ggplot(data=compliance, aes(x=factor(week, levels=c(1:12)), y=n*100, color=task, group=task)) + geom_point(size=1.5) + geom_line(linetype=2)
 p <- p + theme_bw() + ylab('percent') + xlab('study period (week 1-12)') + theme(text=element_text(size=10))
 p <- p + scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + ylim(0,100) 
-p
-ggsave("plots/compliance_plot2.png", width=5, height=3, units="in", dpi=150)
-ggsave("plots/compliance_plot2.tiff", width=5, height=3, units="in", dpi=150)
+p + theme()
+ggsave("plots/compliance_plot2.png", width=6, height=4, units="in", dpi=200)
+ggsave("plots/compliance_plot2.tiff", width=6, height=4, units="in", dpi=100)
 
+
+#complaince 
+week_12_comp <- compliance %>% dplyr::filter(week == 12) %>% .$n
+mean(week_12_comp)
 
 #######
 # Density Plots - select passive features
