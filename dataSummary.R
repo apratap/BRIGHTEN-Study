@@ -4,7 +4,6 @@ install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
 install_load("gridExtra", "pheatmap", "printr", "ggthemes", "stargazer")
 
-
 #Data Summary
 source("loadData.R")
 ls()
@@ -42,9 +41,34 @@ sd(metaData$Age, na.rm = T)
 #Male vs Female
 prop.table(table(metaData$Gender))
 
+#Employed
+prop.table(table(metaData$employed))
+
+
+#Hispanic
+prop.table(table(metaData$hispanic))
+
+#Income
+prop.table(table(metaData$income1))
+
+#Race
+prop.table(table(metaData$race))
+
+
+#Mean enrollment PHQ9
+mean(metaData$baseline_phq9, na.rm=T)
+sd(metaData$baseline_phq9, na.rm=T)
+
 #Main daily mood
 mean(phq2$sum_phq2, na.rm = T)
+median(phq2$sum_phq2, na.rm = T)
 sd(phq2$sum_phq2, na.rm = T)
+
+
+#Prop of Android users
+tmp <- passive_data %>% select(User_Phone_Type, brightenid)
+tmp <- tmp[!duplicated(tmp),]
+table(tmp$User_Phone_Type)
 
 #order data frame by mean of each column
 meanVals <- passive_data %>% select(-User_Phone_Type, -brightenid, -passive_date_pacific,
@@ -90,12 +114,17 @@ phq9Compliance <- phq9  %>%
   mutate(task = 'PHQ-9')
 
 compliance <- rbind(phq2Compliance, passiveDataCompliance, phq9Compliance) %>% as.data.frame()
-p <- ggplot(data=compliance, aes(x=factor(week, levels=c(0:12)), y=n*100, color=task, group=task)) + geom_point(size=1) + geom_line()
-p <- p + theme_bw() + ylab('percent participants') + xlab('study period (week 0-12)')
+p <- ggplot(data=compliance, aes(x=factor(week, levels=c(1:12)), y=n*100, color=task, group=task)) + geom_point(size=1.5) + geom_line(linetype=2)
+p <- p + theme_bw() + ylab('percent') + xlab('study period (week 1-12)') + theme(text=element_text(size=10))
 p <- p + scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + ylim(0,100) 
-p
-ggsave("plots/compliance_plot2.png", width=5, height=3, units="in", dpi=200)
+p + theme(text = element_text(size=12))
+ggsave("plots/compliance_plot2.png", width=6, height=4, units="in", dpi=200)
+ggsave("plots/compliance_plot2.tiff", width=6, height=4, units="in", dpi=200)
 
+
+#complaince 
+week_12_comp <- compliance %>% dplyr::filter(week == 12) %>% .$n
+mean(week_12_comp)
 
 #######
 # Density Plots - select passive features
@@ -113,8 +142,9 @@ p2 <- tmp_hist_plot("sms_count", binwidth = 5 ) + xlab('Number of SMS sent')
 passive_data['callDuration_mins'] = round(passive_data$call_duration/60)
 p3 <- tmp_hist_plot("callDuration_mins", binwidth = 3) + xlab('Call duration (minutes)')
 p4 <- tmp_hist_plot('call_count', binwidth=1) + xlab('Number of calls')
-p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility')
-p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius')
+p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility (miles)')
+p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius (miles)')
 p7 <- gridExtra::grid.arrange(p1,p2,p3,p4,p5,p6, ncol=2)
 ggsave("plots/feature_histograms.png", p7, width=4, height=4, units="in", dpi=300)
+ggsave("plots/feature_histograms.tiff", p7, width=4, height=4, units="in", dpi=300)
 

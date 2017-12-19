@@ -178,3 +178,35 @@ rm(passive_n_phq2_with_imputed_vals, passive_n_phq2,
    tmp_impute_col, tmp_passive_data, tmp_phq2)
 
 ls()
+
+
+##### ADD Deviation from median feature value
+median_passive_features <- FINAL_DATA_noImpute %>% select(c('brightenid',PASSIVE_COL_NAMES)) %>% group_by(brightenid) %>%
+  dplyr::summarise_all(.funs = c("median", 'IQR'), na.rm=F)
+
+FINAL_DATA_noImpute <- merge(FINAL_DATA_noImpute, median_passive_features)
+FINAL_DATA_noImpute <- FINAL_DATA_noImpute %>% 
+  dplyr::mutate(mobility_dev = mobility - mobility_median,
+                sms_length_dev = sms_length - sms_length_median,
+                call_duration_dev = call_duration - call_duration_median,
+                interaction_diversity_dev = interaction_diversity - interaction_diversity_median,
+                missed_interactions_dev = missed_interactions - missed_interactions_median,
+                aggregate_communication_dev = aggregate_communication -aggregate_communication_median,
+                sms_count_dev = sms_count - sms_count_median,
+                mobility_radius_dev = mobility_radius - mobility_radius_median,
+                call_count_dev = call_count - call_count_median,
+                unreturned_calls_dev = unreturned_calls -unreturned_calls_median)
+
+
+FINAL_DATA_wImputedVals <- merge(FINAL_DATA_wImputedVals, median_passive_features)
+FINAL_DATA_wImputedVals <- FINAL_DATA_wImputedVals %>% 
+  dplyr::mutate(mobility_dev = mobility - mobility_median,
+                sms_length_dev = sms_length - sms_length_median,
+                call_duration_dev = call_duration - call_duration_median,
+                interaction_diversity_dev = interaction_diversity - interaction_diversity_median,
+                missed_interactions_dev = missed_interactions - missed_interactions_median,
+                aggregate_communication_dev = aggregate_communication -aggregate_communication_median,
+                sms_count_dev = sms_count - sms_count_median,
+                mobility_radius_dev = mobility_radius - mobility_radius_median,
+                call_count_dev = call_count - call_count_median,
+                unreturned_calls_dev = unreturned_calls -unreturned_calls_median)

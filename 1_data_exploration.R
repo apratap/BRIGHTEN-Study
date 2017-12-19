@@ -27,15 +27,12 @@ library("pheatmap")
 source("loadData.R")
 ls()
 
-phq2 <- phq2 %>% dplyr::filter(week <=12)
-phq9 <- phq9 %>% dplyr::filter(week <=12)
-passive_data <- passive_data %>% dplyr::filter(week <=12)
-
 
 ##### Data Summary
 #Total Uniq users  who contributed some data ACTIVE or PASSIVE
 total_uniq_users <- n_distinct(c(phq2$brightenid, passive_data$brightenid, phq9$brightenid))
 total_uniq_users
+
 #uniq_users_with_PASSIVE_n_PHQ2_data <- intersect( unique(phq2$user_id), unique(passive_data$user_id))
 #n_distinct(uniq_users_with_PASSIVE_n_PHQ2_data)
 
@@ -47,14 +44,12 @@ sum(!is.na(phq9$sum_phq9))
 
 
 #Total days participated by users across users
-days_participated_across_activities <- rbind(passive_data %>% select(user_id, day) %>% mutate(type='passive'),
-phq2 %>% select(user_id, day) %>% mutate(type='phq2'),
-phq9 %>% select(user_id, week) %>% mutate(type='phq9', day=week*7) %>% select(-week))
+days_participated_across_activities <- rbind(passive_data %>% select(brightenid, day) %>% mutate(type='passive'),
+phq2 %>% select(brightenid, day) %>% mutate(type='phq2'),
+phq9 %>% select(brightenid, week) %>% mutate(type='phq9', day=week*7) %>% select(-week))
 #Overall unique person-days in BRIGHTEN 
-days_participated_across_activities %>% dplyr::group_by(user_id) %>% 
+days_participated_across_activities %>% dplyr::group_by(brightenid) %>% 
   dplyr::summarise(n=n_distinct(day)) %>% .$n %>% sum()
-
-table(passive_data$User_Phone_Type)
 
 
 
@@ -159,26 +154,6 @@ aggr_plot <- aggr(tmp, col=c('skyblue','#fc9272', 'grey50'), numbers=TRUE, sortV
 
 
 
-#######
-# Density Plots - select passive features
-#######
-cols_to_plot <- c('SMS_Length','Unreturned_Calls','Call_Duration','Mobility','SMS_Count','Call_Count')
-tmp_hist_plot <- function(col, binwidth, color='#ffb400'){
-  tmp <- passive_data[!is.na(passive_data[[col]]),]
-  upper_cutoff <- as.numeric(quantile(tmp[[col]], probs=.95, na.rm=T))
-  lower_cutoff <- as.numeric(quantile(tmp[[col]], probs=.05, na.rm=T))
-  tmp <- tmp[tmp[[col]] < upper_cutoff & tmp[[col]] > lower_cutoff, ]
-  ggplot(data=tmp, aes_string(x=col))  + theme_bw() + theme(text = element_text(size=8))  + geom_histogram(binwidth = binwidth, fill=color)
-}
-p1 <- tmp_hist_plot("sms_length", binwidth = 50) + xlab('Length of SMS (in characters)')
-p2 <- tmp_hist_plot("sms_count", binwidth = 5 ) + xlab('Number of SMS sent')
-passive_data['callDuration_mins'] = round(passive_data$call_duration/60)
-p3 <- tmp_hist_plot("callDuration_mins", binwidth = 3) + xlab('Call duration (minutes)')
-p4 <- tmp_hist_plot('call_count', binwidth=1) + xlab('Number of calls')
-p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility')
-p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius')
-p7 <- gridExtra::grid.arrange(p1,p2,p3,p4,p5,p6, ncol=2)
-ggsave("plots/feature_histograms.png", p7, width=4, height=4, units="in", dpi=300)
 
 
 

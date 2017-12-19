@@ -29,8 +29,9 @@ M <- cor(df, method="spearman")
 #   return(list(p.mat, lowCI.mat, uppCI.mat))
 # }
 # cor_test_values <- cor.mtest(df) # not working
+par(mar=c(1,1,1,1))
 mar.default <- c(5,4,4,2) + 0.1
-png('plots/feature_correlations.png')
+png('plots/feature_correlations.tiff', height=7, width=7, units="in", res=600)
 corrplot(M, order="hclust", addrect = 4, mar=c(0, 1, 0, 0))
 dev.off()
 
@@ -131,10 +132,6 @@ pheatmap::pheatmap(individual_cor_values,
 #           cor.coeff.args = list(method = "spearman", label.x = 3, label.sep = "\n")
 # ) + facet_wrap(~feature)
 # 
-
-
-
-
 
 
 ggscatter(phq9_feature_cor_by_user, x = "cor", y = "Age",

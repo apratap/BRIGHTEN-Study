@@ -54,7 +54,7 @@ selected_userId <- "YELLOW-00154"
 
 
 n_1_plots <- function(id, xintercept = NA){
-  tmp_data <- data %>% dplyr::filter(brightenid == id)
+  tmp_data <- final_df %>% dplyr::filter(brightenid == id)
   
   p1 <- ggplot(data=tmp_data, aes(x=day, y=sms_length)) + geom_line(color="gray") +
     geom_point(size=1, color="#1D3557") + theme_minimal() + 
@@ -102,3 +102,4 @@ n_1_plots <- function(id, xintercept = NA){
 id <- "YELLOW-00154"
 tmp_p <- n_1_plots(id, xintercept = 52)
 ggsave("plots/Nof1_YELLOW-00154.png", tmp_p, width=8, height=8, dpi=200, units="in")
+ggsave("plots/Nof1_YELLOW-00154.tiff", tmp_p, width=8, height=8, dpi=200, units="in")

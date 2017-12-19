@@ -43,8 +43,6 @@ get_continuousPred_perf <- function(model, testData){
 }
 
 
-
-
 get_bindaryPred_perf <- function(model, testData){
   preds <-  predict(model, testData)
   firstClass.prob <- preds$predictions[,1]
