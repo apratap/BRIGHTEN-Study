@@ -9,20 +9,11 @@ output:
 
 
 ```{r setup, include=FALSE}
-library(data.table)
-library(synapseClient)
-library(ggplot2)
-library(plyr)
-library(dplyr)
-library(tidyr)
-library(reshape2)
-library("sjPlot")
-library('ROCR')
-library(randomForest)
-library(caret)
-library(doMC)
-library(ggpubr)
-library(gridExtra)
+rm(list=ls())
+library("install.load")
+install_load("data.table", "gdata", "ggplot2", "e1071", "grid", "reshape2", "randomForest")
+install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales", "sjPlot", "caret", "gridExtra")
+install_load("ranger", "caret", "printr", "ggthemes" ,"synapseClient", "ROCR", "doMC", "ggpubr")
 
 registerDoMC(4)
 synapseLogin()
@@ -34,12 +25,15 @@ knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
 ```
 
 ```{r}
-source("loadData.R")
+source("../loadData.R")
 ls()
-rm(FINAL_DATA, passive_n_phq2, mdata)
-phq2 <- phq2 %>% filter(week <= 12) %>% filter(!is.na(sum_phq2))
-phq9 <- phq9 %>% filter(week <= 12) %>% filter(!is.na(sum_phq9))
-passive_data <- passive_data %>% filter(week <= 12)
+phq2 <- phq2  %>% filter(!is.na(sum_phq2))
+phq9 <- phq9  %>% filter(!is.na(sum_phq9))
+
+n_distinct(phq9$brightenid)
+n_distinct(phq2$brightenid)
+n_distinct(passive_data$brightenid)
+n_distinct(c(phq2$brightenid, passive_data$brightenid))
 ```
 
 
@@ -47,38 +41,38 @@ passive_data <- passive_data %>% filter(week <= 12)
 ```{r}
 #select only the mobility 
 mobilityfeatures <- passive_data %>% 
-  select(user_id, day, week, mobility, mobility_radius, passive_date_pacific) %>%
+  select(brightenid, day, week, mobility, mobility_radius, passive_date_pacific) %>%
   filter(!(is.na(mobility) | is.na(mobility_radius))) %>%
   mutate(mobRadius_trans = log10(mobility_radius+.0001),
          mobility_trans = log10(mobility+.0001),
          passive_date_pacific = as.character(passive_date_pacific))
 
 #merge with the study meta data
-tmp_metaData <- metaData %>% select(Gender, Age, user_id ) %>% 
-  filter(!is.na(user_id),
+tmp_metaData <- metaData %>% select(Gender, Age, brightenid ) %>% 
+  filter(!is.na(brightenid),
          !is.na(Gender),
          Gender != '')
-mobilityfeatures <- merge(tmp_metaData, mobilityfeatures, by="user_id")
+mobilityfeatures <- merge(tmp_metaData, mobilityfeatures, by="brightenid")
 mobilityfeatures <- mobilityfeatures %>% filter(! (is.na(Age) | Age == '')) %>%
   filter(Age >=18)
-n_distinct(mobilityfeatures$user_id)
+n_distinct(mobilityfeatures$brightenid)
 ```
 
 ### After cleaning number of individuals for whom we have mobility data
 ```{r}
-n_distinct(mobilityfeatures$user_id)
+n_distinct(mobilityfeatures$brightenid)
 ```
 
 
 ```{r}
 ## Compare complaince for mobility and PHQ2 and PHQ9
-compliance_mobilityfeatures <- mobilityfeatures %>% mutate(user_id = as.character(user_id)) %>%
-  group_by(week, user_id) %>% 
+compliance_mobilityfeatures <- mobilityfeatures %>% mutate(brightenid = as.character(brightenid)) %>%
+  group_by(week, brightenid) %>% 
   summarise(n = length(unique(day)),
             survey = 'mobility')
 
-compliance_phq2 <- phq2 %>% mutate(user_id = as.character(user_id)) %>% 
-  group_by(week, user_id) %>% 
+compliance_phq2 <- phq2 %>% mutate(brightenid = as.character(brightenid)) %>% 
+  group_by(week, brightenid) %>% 
   summarise(n = length(unique(day)),
             survey = 'phq2')
 ```
@@ -87,34 +81,47 @@ compliance_phq2 <- phq2 %>% mutate(user_id = as.character(user_id)) %>%
 ```{r , eval=F}
 ### Merged Passive and PHQ2 data
 tmp_phq2 <- phq2 %>%  mutate(start = as.character(start), day = day-1) %>% select(-week)
-mobilityfeatures <- mobilityfeatures %>% dplyr::mutate(user_id = as.character(user_id))
+mobilityfeatures <- mobilityfeatures %>% dplyr::mutate(brightenid = as.character(brightenid))
 intersect(colnames(mobilityfeatures), colnames(tmp_phq2))
-str(mobilityfeatures)
-str(tmp_phq2)
 mobilityfeatures_n_phq2 <- merge(mobilityfeatures, tmp_phq2)
 ```
 
-### After cleaning number of individuals for whom we have mobility data
+### After cleaning number of individuals for whom we have mobility and PHQ2 data
 ```{r}
-n_distinct(mobilityfeatures_n_phq2$user_id)
+n_distinct(mobilityfeatures_n_phq2$brightenid)
 ```
 
 
 ### Filter to users with enough data
 ```{r}
-dataPerUser <- mobilityfeatures_n_phq2 %>% group_by(user_id) %>% 
+dataPerUser <- mobilityfeatures_n_phq2 %>% group_by(brightenid) %>% 
   summarise(n = length(unique(day)),
             survey = 'passive')
 
 hist(dataPerUser$n)
-#select individuals with atleast 28 data points (AKA 4 weeks)
-SELECTED_USERS <- dataPerUser %>% filter( n >= 28) %>% .$user_id %>% unique()
-mobilityfeatures_n_phq2_flt <- mobilityfeatures_n_phq2 %>% filter(user_id %in% SELECTED_USERS)
+#select individuals with atleast 15 data points 
+
+SELECTED_USERS <- dataPerUser %>% filter( n >= 14) %>% .$brightenid %>% unique()
+mobilityfeatures_n_phq2_flt <- mobilityfeatures_n_phq2 %>% filter(brightenid %in% SELECTED_USERS)
 ```
 
 ```{r}
-n_distinct(mobilityfeatures_n_phq2_flt$user_id)
+n_distinct(mobilityfeatures_n_phq2_flt$brightenid)
 ```
+
+
+### Overall mobility var
+```{r}
+summary(mobilityfeatures_n_phq2$mobility)
+sd(mobilityfeatures_n_phq2$mobility)
+
+summary(mobilityfeatures_n_phq2$mobility_radius)
+sd(mobilityfeatures_n_phq2$mobility_radius)
+
+summary(mobilityfeatures_n_phq2$sum_phq2)
+sd(mobilityfeatures_n_phq2$sum_phq2)
+```
+
 
 
 
@@ -175,7 +182,8 @@ ggplot(data=mobilityfeatures_n_phq2_flt, aes(x=mobRadius_trans, fill=Gender)) + 
 
 ```{r fig.height=3, fig.width=4, fig.align='center'}
 mobilityfeatures_n_phq2_flt$age_group <- cut(mobilityfeatures_n_phq2_flt$Age, c(0,30,40,50,60,70,80), right=T)
-ggplot(data=mobilityfeatures_n_phq2_flt, aes(x=mobRadius_trans, fill=age_group)) + geom_density(alpha=.4)
+#ggplot(data=mobilityfeatures_n_phq2_flt, aes(x=mobRadius_trans, fill=age_group)) + geom_density(alpha=.4)
+ggplot(data=mobilityfeatures_n_phq2_flt, aes(x=mobility_trans, fill=age_group)) + geom_density(alpha=.4)
 ```
 
 
@@ -191,41 +199,36 @@ Top 12 users with significant correlation with mobility radius. There is individ
 
 
 ```{r}
-tmp_selected_users <- unique(mobilityfeatures_n_phq2_flt$user_id)
+tmp_selected_users <- unique(mobilityfeatures_n_phq2_flt$brightenid)
 
-cor_mobRadiusTrans <- ldply(tmp_selected_users, function(userId){
-  n1 <- mobilityfeatures_n_phq2_flt %>% filter(user_id == userId)
-  tmp_cor <- cor(n1$mobRadius_trans, n1$sum_phq2, method="spearman")
-  tmp_pval <- cor.test(n1$mobRadius_trans, n1$sum_phq2, method="spearman")['p.value']
-  data.frame(cor=tmp_cor, pval=tmp_pval, user_id = userId)
-})
-
+# cor_mobRadiusTrans <- ldply(tmp_selected_users, function(userId){
+#   n1 <- mobilityfeatures_n_phq2_flt %>% filter(brightenid == userId)
+#   tmp_cor <- cor(n1$mobRadius_trans, n1$sum_phq2, method="spearman")
+#   tmp_pval <- cor.test(n1$mobRadius_trans, n1$sum_phq2, method="spearman")['p.value']
+#   data.frame(cor=tmp_cor, pval=tmp_pval, brightenid = userId)
+# })
+#cor_mobRadiusTrans['pval.adj'] <- p.adjust(cor_mobRadiusTrans$p.value, method="fdr")
+#sum(cor_mobRadiusTrans$p.value < .05, na.rm = T)
 
 cor_MobilityTrans <- ldply(tmp_selected_users, function(userId){
-  n1 <- mobilityfeatures_n_phq2_flt %>% filter(user_id == userId)
+  n1 <- mobilityfeatures_n_phq2_flt %>% filter(brightenid == userId)
   tmp_cor <- cor(n1$mobility_trans, n1$sum_phq2, method="spearman")
   tmp_pval <- cor.test(n1$mobility_trans, n1$sum_phq2,  method="spearman")['p.value']
-  data.frame(cor=tmp_cor, pval=tmp_pval, user_id = userId)
+  data.frame(cor=tmp_cor, pval=tmp_pval, brightenid = userId)
 })
 
-cor_mobRadiusTrans['pval.adj'] <- p.adjust(cor_mobRadiusTrans$p.value, method="fdr")
 cor_MobilityTrans['pval.adj'] <- p.adjust(cor_MobilityTrans$p.value, method="fdr")
-
 sum(cor_MobilityTrans$p.value < .05, na.rm = T)
-sum(cor_mobRadiusTrans$p.value < .05, na.rm = T)
-
 sum(cor_MobilityTrans$pval.adj < .05, na.rm = T)
-sum(cor_mobRadiusTrans$pval.adj < .05, na.rm = T)
 
+tmp <- cor_MobilityTrans %>% filter(p.value < .05) %>% arrange(p.value, desc(abs(cor)))
+tmp_selected_users <- as.character(tmp$brightenid[c(1,4,3,2)])
 
-tmp <- cor_mobRadiusTrans %>% filter(p.value < .05) %>% arrange(p.value, desc(abs(cor)))
-View(tmp)
-tmp_selected_users <- c('15316', '16696', '68874', '16649')
 
 tmp_plots <- lapply(1:length(tmp_selected_users), function(index){
   userId <- tmp_selected_users[index]
-  n1 <- mobilityfeatures_n_phq2_flt %>% filter(user_id == userId)
-  ggscatter(data=n1, y="mobRadius_trans",
+  n1 <- mobilityfeatures_n_phq2_flt %>% dplyr::filter(brightenid == tmp_selected_users[index])
+  ggscatter(data=n1, y="mobility_trans",
           x="sum_phq2",
           size = .3,
           add = "reg.line",  # Add regressin line
@@ -237,11 +240,11 @@ tmp_plots <- lapply(1:length(tmp_selected_users), function(index){
           cor.coeff.args = list(method = "pearson", fontface="italic",
                                 label.x.npc = "left", colour = "black",
                                 label.y.npc = "bottom")
-          ) + ggtitle(paste0(letters[index], '.')) + ylab('Mobility radius (log10)') + xlab('PHQ-2 score') + theme(text = element_text(size=8), plot.title=element_text(hjust=0, face="bold"))
+          ) + ggtitle(paste0(letters[index], '.')) + ylab('Mobility (log10)') + xlab('PHQ-2 score') + theme(text = element_text(size=8), plot.title=element_text(hjust=0, face="bold"))
 })
 pl <- gridExtra::arrangeGrob(grobs=tmp_plots, ncol=2)
-ggsave("mobilityAnalysis/plots/mobility.png", pl, height=5, width=7, units="in")
-ggsave("mobilityAnalysis/plots/mobility.tiff", pl, height=5, width=7, units="in")
+ggsave("plots/mobility.png", pl, height=5, width=7, units="in")
+ggsave("plots/mobility.tiff", pl, height=5, width=7, units="in")
 ```
 
 
@@ -249,23 +252,21 @@ ggsave("mobilityAnalysis/plots/mobility.tiff", pl, height=5, width=7, units="in"
 
 ```{r}
 ##### At Cohort level 
-
 library(ranger)
 library(caret)
-
 colnames(mobilityfeatures_n_phq2_flt)
-tmp_data <- mobilityfeatures_n_phq2_flt %>% select( -day,-week, -Age, -start) 
+tmp_data <- mobilityfeatures_n_phq2_flt %>% select( -day,-week, -Age, -start, -mobRadius_trans, -mobility_radius) 
 colnames(tmp_data)
 tmp_data <- tmp_data[complete.cases(tmp_data),]
 
 set.seed(18989)
 library(doMC)
 registerDoMC(4)
-res <- ldply(seq(1:20), .parallel = T, .fun = function(x) {
-  users <- unique(tmp_data$user_id)
-  train_users <- sample(users, .60*length(users))
-  train <- tmp_data %>% filter(user_id %in% train_users)
-  test <- tmp_data %>% filter(! (user_id %in% train_users))
+res <- ldply(seq(1:50), .parallel = T, .fun = function(x) {
+  users <- unique(tmp_data$brightenid)
+  train_users <- sample(users, .70*length(users))
+  train <- tmp_data %>% filter(brightenid %in% train_users)
+  test <- tmp_data %>% filter(! (brightenid %in% train_users))
   mod.fit <- ranger(sum_phq2 ~ . , data=train, importance="permutation")
   preds <- predict(mod.fit, test)
   testRMSE <- sqrt(mean((test$sum_phq2 - preds$predictions)^2))
@@ -275,7 +276,10 @@ res <- ldply(seq(1:20), .parallel = T, .fun = function(x) {
   data.frame(testRMSE=testRMSE, testRsq=testRsq)
 })
 
-View(res)
+median(res$testRsq)
+mean(res$testRsq)
+sd(res$testRsq)
+
 ```
 
 -----------------
@@ -286,28 +290,30 @@ The correlation/trend with PHQ9 is much more prominent than PHQ2. Note some indi
 
 
 ```{r fig.height=10, fig.width=12}
-tmp_phq9 <-  as.data.frame(phq9) %>% select(user_id, sum_phq9, week)
+tmp_phq9 <-  as.data.frame(phq9) %>% select(brightenid, sum_phq9, week)
 intersect(colnames(tmp_phq9), colnames(mobilityfeatures))
 str(tmp_phq9)
 str(mobilityfeatures)
+dim(tmp_phq9)
+dim(mobilityfeatures)
 tmp_mobF <- merge(mobilityfeatures,tmp_phq9)
 dim(tmp_mobF)
 
-selected_users <- tmp_mobF %>% group_by(user_id) %>% summarise(numDataPoints = n()) %>% 
-  filter(numDataPoints >= 15) %>% .$user_id
-tmp_mobF <- tmp_mobF %>% filter(user_id %in% selected_users)
+selected_users <- tmp_mobF %>% group_by(brightenid) %>% summarise(numDataPoints = n()) %>% 
+  filter(numDataPoints >= 15) %>% .$brightenid
+tmp_mobF <- tmp_mobF %>% filter(brightenid %in% selected_users)
 
-cor_mobRadius_phq9 <- ldply(selected_users, function(userId){
-  n1 <- tmp_mobF %>% filter(user_id == userId)
-  tmp_cor <- cor(n1$mobRadius_trans, n1$sum_phq9, method="spearman")
+cor_mobbility_phq9 <- ldply(selected_users, function(userId){
+  n1 <- tmp_mobF %>% filter(brightenid == userId)
+  tmp_cor <- cor(n1$mobility_trans, n1$sum_phq9, method="spearman")
   tmp_pval <- cor.test(n1$mobRadius_trans, n1$sum_phq9, method="spearman")['p.value']
   data.frame(cor=tmp_cor, pval=tmp_pval, user_id = userId)
 })
 
-View(cor_mobRadius_phq9)
-sum(cor_mobRadius_phq9$p.value < .05, na.rm = T)
-cor_mobRadius_phq9['pval.adj'] <- p.adjust(cor_mobRadius_phq9$p.value, method="fdr")
-sum(cor_mobRadius_phq9$pval.adj < .05, na.rm = T)
+View(cor_mobbility_phq9)
+sum(cor_mobbility_phq9$p.value < .05, na.rm = T)
+cor_mobbility_phq9['pval.adj'] <- p.adjust(cor_mobbility_phq9$p.value, method="fdr")
+sum(cor_mobbility_phq9$pval.adj < .05, na.rm = T)
 
 # phq9_res <- phq9_res %>% filter(p.value < .05) %>% arrange(p.value)
 # phq9_res <- phq9_res[1:6,]
@@ -336,13 +342,13 @@ sum(cor_mobRadius_phq9$pval.adj < .05, na.rm = T)
 
 ```{r fig.height=5, fig.width=8}
 
-phq9_correlation_by_age <- tmp_mobF %>% group_by(Age) %>% summarise(cor = cor(sum_phq9, mobRadius_trans, method="spearman"))
+phq9_correlation_by_age <- tmp_mobF %>% group_by(Age) %>% summarise(cor = cor(sum_phq9, mobility_trans, method="spearman"))
 
 p1 <- ggplot(data=phq9_correlation_by_age, aes(x=Age, y=cor)) + geom_point() + geom_smooth() + ylab('correlation between (Mobility & PHQ9)') + theme_bw()
 p1
 
 
-phq2_correlation_by_age <- mobilityfeatures_n_phq2_flt %>% group_by(Age) %>% summarise(cor = cor(sum_phq2, mobRadius_trans, method="spearman"))
+phq2_correlation_by_age <- mobilityfeatures_n_phq2_flt %>% group_by(Age) %>% summarise(cor = cor(sum_phq2, mobility_trans, method="spearman"))
 p2 <- ggplot(data=phq2_correlation_by_age, aes(x=Age, y=cor)) + geom_point() + geom_smooth() + ylab('correlation between (Mobility & PHQ2)') + theme_bw()
 gridExtra::grid.arrange(p1,p2, nrow=1)
 ```
@@ -353,18 +359,17 @@ gridExtra::grid.arrange(p1,p2, nrow=1)
 #### Heatmap comparing Median mobility radius / week for each partcipant
 ```{r fig.height=8, fig.width=10}
 #Mobility Radius
-x <- mobilityfeatures_n_phq2_flt %>% group_by(user_id, week) %>%
-  summarise(Mobility = log10(median(mobility_radius) + .0001))
+x <- mobilityfeatures_n_phq2_flt %>% group_by(brightenid, week) %>%
+  summarise(Mobility = log10(median(mobility) + .0001))
 
 x1 <- x %>% tidyr::spread(week, Mobility)
-View(x1)
 x1 <- x1[complete.cases(x1),]
-rownames(x1) <- x1$user_id
-x1$user_id <- NULL
-rowAnnot <- metaData %>% filter(user_id %in% rownames(x1)) %>%
-  select(Age,Gender, user_id)
-rownames(rowAnnot) <- rowAnnot$user_id
-rowAnnot$user_id <- NULL
+rownames(x1) <- x1$brightenid
+x1$brightenid <- NULL
+rowAnnot <- metaData %>% filter(brightenid %in% rownames(x1)) %>%
+  select(Age,Gender, brightenid)
+rownames(rowAnnot) <- rowAnnot$brightenid
+rowAnnot$brightenid <- NULL
 pheatmap::pheatmap(t(scale(t(x1))), cluster_cols = F,
                    annotation_row = rowAnnot, show_rownames = F)
 ```

@@ -61,6 +61,7 @@ sd(metaData$baseline_phq9, na.rm=T)
 
 #Main daily mood
 mean(phq2$sum_phq2, na.rm = T)
+median(phq2$sum_phq2, na.rm = T)
 sd(phq2$sum_phq2, na.rm = T)
 
 
@@ -116,7 +117,7 @@ compliance <- rbind(phq2Compliance, passiveDataCompliance, phq9Compliance) %>% a
 p <- ggplot(data=compliance, aes(x=factor(week, levels=c(1:12)), y=n*100, color=task, group=task)) + geom_point(size=1.5) + geom_line(linetype=2)
 p <- p + theme_bw() + ylab('percent') + xlab('study period (week 1-12)') + theme(text=element_text(size=10))
 p <- p + scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + ylim(0,100) 
-p + theme()
+p + theme(text = element_text(size=12))
 ggsave("plots/compliance_plot2.png", width=6, height=4, units="in", dpi=200)
 ggsave("plots/compliance_plot2.tiff", width=6, height=4, units="in", dpi=100)
 
@@ -141,8 +142,9 @@ p2 <- tmp_hist_plot("sms_count", binwidth = 5 ) + xlab('Number of SMS sent')
 passive_data['callDuration_mins'] = round(passive_data$call_duration/60)
 p3 <- tmp_hist_plot("callDuration_mins", binwidth = 3) + xlab('Call duration (minutes)')
 p4 <- tmp_hist_plot('call_count', binwidth=1) + xlab('Number of calls')
-p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility')
-p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius')
+p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility (miles)')
+p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius (miles)')
 p7 <- gridExtra::grid.arrange(p1,p2,p3,p4,p5,p6, ncol=2)
 ggsave("plots/feature_histograms.png", p7, width=4, height=4, units="in", dpi=300)
+ggsave("plots/feature_histograms.tiff", p7, width=4, height=4, units="in", dpi=300)
 

@@ -31,32 +31,39 @@ mod_GEE_passiveData <- geeglm(sum_phq2 ~ unreturned_calls + mobility + sms_lengt
                            id=brightenid, waves=wave,
                            corstr="ar1", data=data_for_GEE_mod1)
 
+summary(mod_GEE_passiveData)
+texreg::extract(mod_GEE_passiveData)
+texreg::htmlreg(texreg::extract(mod_GEE_passiveData),
+                stars = c(0.001, .01, .05, .10),
+                custom.model.names = c("Effect size (SE)"),
+                single.row = TRUE,
+                caption ="",
+                center = TRUE,
+                file="plots/GEE_estimates.html")
+
+
 
 data_for_GEE_mod2 <- final_df %>%
   group_by(brightenid) %>% 
   arrange(brightenid, week, day) %>% 
   mutate(wave = 1:n()) %>%
   as.data.frame() %>%
-  mutate(brightenid = as.factor(brightenid),
-         unreturned_calls = unreturned_calls_dev,
-         mobility = mobility_dev,
-         sms_length = sms_length_dev,
-         call_duration = call_duration_dev,
-         interaction_diversity  = interaction_diversity_dev,
-         missed_interactions = missed_interactions_dev,
-         aggregate_communication = aggregate_communication_dev,
-         sms_count = sms_count_dev,
-         mobility_radius = mobility_radius_dev,
-         call_count = call_count_dev)
+  mutate(brightenid = as.factor(brightenid))
            
-mod_GEE_passiveData_deviations <- geeglm(sum_phq2 ~ unreturned_calls + mobility + sms_length +
-                                           call_duration + interaction_diversity + missed_interactions +
-                                           missed_interactions + aggregate_communication + sms_count +
-                                           mobility_radius + call_count + Age + Gender, 
+mod_GEE_passiveData_deviations <- geeglm(sum_phq2 ~ unreturned_calls_dev + mobility_dev + sms_length_dev +
+                                           call_duration_dev + interaction_diversity_dev + missed_interactions_dev +
+                                           missed_interactions_dev + aggregate_communication_dev + sms_count_dev +
+                                           mobility_radius_dev + call_count_dev + Age + Gender + unreturned_calls_median + mobility_median + sms_length_median +
+                                           call_duration_median + interaction_diversity_median + missed_interactions_median +
+                                           missed_interactions_median + aggregate_communication_median + sms_count_median +
+                                           mobility_radius_median + call_count_median, 
                                          id=brightenid, waves=wave,
                                          corstr="ar1", data=data_for_GEE_mod2)
 summary(mod_GEE_passiveData_deviations)
 
+
+
+colnames(final_df)
 
 texreg::htmlreg(list(texreg::extract(mod_GEE_passiveData),
                      texreg::extract(mod_GEE_passiveData_deviations)),
