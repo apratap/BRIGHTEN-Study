@@ -16,6 +16,7 @@ source("loadData.R")
 #load ML methods
 source("ML_methods.R")
 ls()
+set.seed('5645645')
 
 final_df <- FINAL_DATA_wImputedVals 
 final_df['phq2_class'] = 'low'
@@ -51,49 +52,53 @@ n_distinct(final_df$brightenid)
 
 COVARIATES_COLS = c(PASSIVE_COL_NAMES, paste0(PASSIVE_COL_NAMES, '_dev'))
 
+#################################
 ### Predict PHQ2 - Regression
-pred_PHQ2_Nof1_passiveFeatures <- ldply(1:50, .parallel=T, .fun = function(x){
-  final_df %>%  dplyr::mutate(response = sum_phq2) %>% 
-    dplyr::select(-sum_phq2, -phq2_class) %>% 
-    dplyr::group_by(brightenid) %>%
-    nest() %>%
-    mutate(res = purrr::map(data, function(x){
-      to_keep <- !is.na(x$response)
-      x <- x[to_keep,]
-      trainIds_idx <- sample(1:nrow(x), round(nrow(x)*.70))
-      train <- x[trainIds_idx,]
-      test <- x[-trainIds_idx,]
-      train <- train[, c(COVARIATES_COLS, "response")]
-      test <- test[, c(COVARIATES_COLS, "response")]
-      #Continuous Response
-      rfFit <-  ranger(response ~ ., data=train)
-      res <- get_continuousPred_perf(rfFit, test)
-    })) %>%
-    dplyr::select(-data) %>%
-    unnest()
-})
+#################################
+# pred_PHQ2_Nof1_passiveFeatures <- ldply(1:50, .parallel=T, .fun = function(x){
+#   final_df %>%  dplyr::mutate(response = sum_phq2) %>% 
+#     dplyr::select(-sum_phq2, -phq2_class) %>% 
+#     dplyr::group_by(brightenid) %>%
+#     nest() %>%
+#     mutate(res = purrr::map(data, function(x){
+#       to_keep <- !is.na(x$response)
+#       x <- x[to_keep,]
+#       trainIds_idx <- sample(1:nrow(x), round(nrow(x)*.70))
+#       train <- x[trainIds_idx,]
+#       test <- x[-trainIds_idx,]
+#       train <- train[, c(COVARIATES_COLS, "response")]
+#       test <- test[, c(COVARIATES_COLS, "response")]
+#       #Continuous Response
+#       rfFit <-  ranger(response ~ ., data=train)
+#       res <- get_continuousPred_perf(rfFit, test)
+#     })) %>%
+#     dplyr::select(-data) %>%
+#     unnest()
+# })
+# 
+# selected_user_order <- pred_PHQ2_Nof1_passiveFeatures %>% 
+#   dplyr::group_by(brightenid) %>%
+#   dplyr::summarise(medVal = median(testRsq, na.rm=T)) %>%
+#   dplyr::arrange(medVal) %>% .$brightenid %>%
+#   as.character()
+# 
+# pred_PHQ2_Nof1_passiveFeatures <- pred_PHQ2_Nof1_passiveFeatures %>% 
+#   mutate(brightenid = as.character(brightenid)) %>%
+#   mutate(brightenid = factor(brightenid, levels=selected_user_order))
+# p1 <- ggplot(data=pred_PHQ2_Nof1_passiveFeatures %>% filter( testRsq < 1 & testRsq > -1), 
+#              aes(y=testRsq, x=brightenid))
+# p1 <- p1 + geom_boxplot(size=.5) + coord_flip() + theme_bw() + xlab("test study participants") +
+#   ylab('test data R-squared') + 
+#   theme(axis.text = element_text(size=11),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank()) + geom_hline(yintercept = 0,size=.5, color="#C0363C")
+# p1
+# ggsave("plots/predict_PHQ2_Nof1.png", p1, width=6, height=12, dpi=100, 
+#        units="in")
 
-selected_user_order <- pred_PHQ2_Nof1_passiveFeatures %>% 
-  dplyr::group_by(brightenid) %>%
-  dplyr::summarise(medVal = median(testRsq, na.rm=T)) %>%
-  dplyr::arrange(medVal) %>% .$brightenid %>%
-  as.character()
-
-pred_PHQ2_Nof1_passiveFeatures <- pred_PHQ2_Nof1_passiveFeatures %>% 
-  mutate(brightenid = as.character(brightenid)) %>%
-  mutate(brightenid = factor(brightenid, levels=selected_user_order))
-p1 <- ggplot(data=pred_PHQ2_Nof1_passiveFeatures %>% filter( testRsq < 1 & testRsq > -1), 
-             aes(y=testRsq, x=brightenid))
-p1 <- p1 + geom_boxplot(size=.5) + coord_flip() + theme_bw() + xlab("test study participants") +
-  ylab('test data R-squared') + 
-  theme(axis.text = element_text(size=11),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank()) + geom_hline(yintercept = 0,size=.5, color="#C0363C")
-p1
-ggsave("plots/predict_PHQ2_Nof1.png", p1, width=6, height=12, dpi=100, 
-       units="in")
-
+#######################
 ###### Pred PHQ2 class
+#######################
 pred_PHQ2Class_Nof1_passiveFeatures <- ldply(1:100, .parallel=T, .fun = function(x){
   final_df %>%  dplyr::mutate(response = phq2_class) %>% 
     dplyr::select(-sum_phq2, -phq2_class) %>% 
@@ -154,6 +159,7 @@ ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=4, height=7, dpi=200, unit
 
 
 
+
 ############
 # Varibale Importance
 ############
@@ -174,14 +180,59 @@ pred_PHQ2Class_varImp <- ldply(1:100, .parallel=T, .fun = function(x){
       if(n_distinct(train$response) == 2 & n_distinct(test$response) == 2){
         rfFit <- ranger(response ~ ., data=train, importance = "impurity")
         data.frame(variable = names(rfFit$variable.importance),
-                   importance = as.numeric(rfFit$variable.importance))
+                   importance = as.numeric(rfFit$variable.importance)) %>%
+          dplyr::mutate(importanceRank = rank(importance))
       } else {
-        data.frame(variable = NA, importance = NA)
+        data.frame(variable = NA, importance = NA, importanceRank = NA)
       }
     })) %>%
     dplyr::select(-data) %>%
     unnest()
 })
+
+
+
+
+#Avg rank per feature per individual
+avg_importanceRank_feature <- pred_PHQ2Class_varImp %>% 
+  dplyr::group_by(brightenid, variable) %>% 
+  dplyr::summarise(avgRank = mean(importanceRank, na.rm=T)) %>% as.data.frame() %>%
+  dplyr::filter(!is.na(variable)) %>%
+  spread(variable, avgRank)
+rownames(avg_importanceRank_feature) <- avg_importanceRank_feature$brightenid
+colnames(avg_importanceRank_feature) <- gsub('_','-', colnames(avg_importanceRank_feature))
+avg_importanceRank_feature$brightenid  <- NULL
+
+
+# Overwrite default draw_colnames in the pheatmap package.
+# Thanks to Josh O'Brien at http://stackoverflow.com/questions/15505607
+draw_colnames_45 <- function (coln, gaps, ...) {
+  coord <- pheatmap:::find_coordinates(length(coln), gaps)
+  x     <- coord$coord - 0.5 * coord$size
+  res   <- grid::textGrob(
+    coln, x = x, y = unit(1, "npc") - unit(3,"bigpts"),
+    vjust = 0.75, hjust = 1, rot = 45, gp = grid::gpar(...)
+  )
+  return(res)
+}
+assignInNamespace(
+  x = "draw_colnames",
+  value = "draw_colnames_45",
+  ns = asNamespace("pheatmap")
+)
+pal <- wesanderson::wes_palette("Zissou", 100, type = "continuous")
+png("plots/predict_PHQ2Class_variableImportanceRank_heatmap.png", width=6.5, height=6.5, res=200, units="in")
+pheatmap::pheatmap(avg_importanceRank_feature,
+                   color = pal, border_color = NA,
+                   fontsize = 8, show_rownames=F)
+dev.off()
+tiff("plots/predict_PHQ2Class_variableImportanceRank_heatmap.tiff", width=6.5, height=6.5, res=200, units="in")
+pheatmap::pheatmap(avg_importanceRank_feature,
+                   color = pal, border_color = NA,
+                   fontsize = 8, show_rownames=F)
+dev.off()
+
+
 pred_PHQ2Class_varImp <- pred_PHQ2Class_varImp %>% filter(!is.na(variable))
 pred_PHQ2Class_varImp$variable <- gsub('_', ' ', pred_PHQ2Class_varImp$variable)
 selected_levels <- pred_PHQ2Class_varImp %>% group_by(variable) %>% summarise(med = median(importance, na.rm=T)) %>%
@@ -193,7 +244,6 @@ p1 <- p1 + theme_bw() + xlab("passive feature type") + ylab('variable importance
   theme(axis.text = element_text(size=11),
         axis.title.y = element_text(size = rel(1.2)),
         axis.title.x = element_text(size = rel(1.2)))
-p1
 ggsave("plots/predict_PHQ2Class_variableImportance.png", p1, width=6.5, height=6.5, dpi=200, units="in")
 ggsave("plots/predict_PHQ2Class_variableImportance.tiff", p1, width=6.5, height=6.5, dpi=200, units="in")
 
@@ -202,73 +252,73 @@ ggsave("plots/predict_PHQ2Class_variableImportance.tiff", p1, width=6.5, height=
 ######################
 ### Predict PHQ2 - sliding window
 ######################
-pred_PHQ2_weekly_Nof1_passiveFeatures <- final_df %>%  dplyr::mutate(response = sum_phq2) %>% 
-  dplyr::select(-sum_phq2, -phq2_class) %>% 
-  dplyr::group_by(brightenid) %>%
-  nest() %>%
-  mutate(res = purrr::map(data, function(x){
-    #remove NA response
-    to_keep <- !is.na(x$response)
-    x <- x[to_keep,]
-    
-    #sliding window personalized random forest
-    TRAIN_WEEKS = c(4:10)
-    ldply(TRAIN_WEEKS, .parallel=T, function(train_week){
-      train <- x %>% filter(week <= train_week)
-      test <- x %>% filter(week > train_week)
-      #data.frame(week=train_week, test=nrow(test), train=nrow(train))  
-      if(nrow(test) >= 10 & nrow(train) >= 10){
-        #Continuous Response
-        rfFit <-  ranger(response ~ ., data=train)
-        res <- get_continuousPred_perf(rfFit, test)
-        res['learning_weeks']= train_week
-        res
-      }
-      else return(data.frame(testRsq=NA, testRMSE=NA, learning_weeks = train_week))
-    })
-  }))   %>% dplyr::select(-data) %>%
-  unnest()
-
-pred_PHQ2_weekly_Nof1_passiveFeatures$testRsq[pred_PHQ2_weekly_Nof1_passiveFeatures$testRsq < 0] = 0
-tmp <- pred_PHQ2_weekly_Nof1_passiveFeatures %>% select(-testRMSE) %>% spread(learning_weeks, testRsq) 
-tmp$brightenid <- NULL
-head(tmp)
-to_keep <- apply(tmp , 1, function(x) sum(is.na(x)) / length(x)) < .50
-tmp <- tmp[to_keep,]
-pheatmap::pheatmap(tmp, cluster_cols = F)
-
-#PHQ2 Class pred  - sliding window
-pred_PHQ2Class_weekly_Nof1_passiveFeatures <- final_df %>%  dplyr::mutate(response = phq2_class) %>% 
-  dplyr::select(-sum_phq2, -phq2_class) %>% 
-  dplyr::group_by(brightenid) %>%
-  nest() %>%
-  mutate(res = purrr::map(data, function(x){
-    #remove NA response
-    to_keep <- !is.na(x$response)
-    x <- x[to_keep,]
-    #sliding window personalized random forest
-    TRAIN_WEEKS = c(4:10)
-    ldply(TRAIN_WEEKS, .parallel=T, function(train_week){
-      train <- x %>% filter(week <= train_week)
-      test <- x %>% filter(week > train_week)
-      #data.frame(week=train_week, test=nrow(test), train=nrow(train))
-      if(nrow(test) >= 10 & nrow(train) >= 10 & n_distinct(test$response) == 2 & n_distinct(train$response) == 2){
-        rfFit <-  ranger(response ~ ., data=train, probability=T)
-        res <- get_bindaryPred_perf(rfFit, test)
-        res['learning_weeks']= train_week
-        res
-      }
-      else return(data.frame(auc=NA, learning_weeks = train_week))
-    })
-  })) %>% dplyr::select(-data) %>%  unnest()
-
-
-tmp <- pred_PHQ2Class_weekly_Nof1_passiveFeatures %>%
-  spread(learning_weeks, auc) 
-tmp$brightenid <- NULL
-to_keep <- apply(tmp , 1, function(x) sum(is.na(x)) / length(x)) < .50
-tmp <- tmp[to_keep,]
-pheatmap::pheatmap(tmp, cluster_cols = F)
+# pred_PHQ2_weekly_Nof1_passiveFeatures <- final_df %>%  dplyr::mutate(response = sum_phq2) %>% 
+#   dplyr::select(-sum_phq2, -phq2_class) %>% 
+#   dplyr::group_by(brightenid) %>%
+#   nest() %>%
+#   mutate(res = purrr::map(data, function(x){
+#     #remove NA response
+#     to_keep <- !is.na(x$response)
+#     x <- x[to_keep,]
+#     
+#     #sliding window personalized random forest
+#     TRAIN_WEEKS = c(4:10)
+#     ldply(TRAIN_WEEKS, .parallel=T, function(train_week){
+#       train <- x %>% filter(week <= train_week)
+#       test <- x %>% filter(week > train_week)
+#       #data.frame(week=train_week, test=nrow(test), train=nrow(train))  
+#       if(nrow(test) >= 10 & nrow(train) >= 10){
+#         #Continuous Response
+#         rfFit <-  ranger(response ~ ., data=train)
+#         res <- get_continuousPred_perf(rfFit, test)
+#         res['learning_weeks']= train_week
+#         res
+#       }
+#       else return(data.frame(testRsq=NA, testRMSE=NA, learning_weeks = train_week))
+#     })
+#   }))   %>% dplyr::select(-data) %>%
+#   unnest()
+# 
+# pred_PHQ2_weekly_Nof1_passiveFeatures$testRsq[pred_PHQ2_weekly_Nof1_passiveFeatures$testRsq < 0] = 0
+# tmp <- pred_PHQ2_weekly_Nof1_passiveFeatures %>% select(-testRMSE) %>% spread(learning_weeks, testRsq) 
+# tmp$brightenid <- NULL
+# head(tmp)
+# to_keep <- apply(tmp , 1, function(x) sum(is.na(x)) / length(x)) < .50
+# tmp <- tmp[to_keep,]
+# pheatmap::pheatmap(tmp, cluster_cols = F)
+# 
+# #PHQ2 Class pred  - sliding window
+# pred_PHQ2Class_weekly_Nof1_passiveFeatures <- final_df %>%  dplyr::mutate(response = phq2_class) %>% 
+#   dplyr::select(-sum_phq2, -phq2_class) %>% 
+#   dplyr::group_by(brightenid) %>%
+#   nest() %>%
+#   mutate(res = purrr::map(data, function(x){
+#     #remove NA response
+#     to_keep <- !is.na(x$response)
+#     x <- x[to_keep,]
+#     #sliding window personalized random forest
+#     TRAIN_WEEKS = c(4:10)
+#     ldply(TRAIN_WEEKS, .parallel=T, function(train_week){
+#       train <- x %>% filter(week <= train_week)
+#       test <- x %>% filter(week > train_week)
+#       #data.frame(week=train_week, test=nrow(test), train=nrow(train))
+#       if(nrow(test) >= 10 & nrow(train) >= 10 & n_distinct(test$response) == 2 & n_distinct(train$response) == 2){
+#         rfFit <-  ranger(response ~ ., data=train, probability=T)
+#         res <- get_bindaryPred_perf(rfFit, test)
+#         res['learning_weeks']= train_week
+#         res
+#       }
+#       else return(data.frame(auc=NA, learning_weeks = train_week))
+#     })
+#   })) %>% dplyr::select(-data) %>%  unnest()
+# 
+# 
+# tmp <- pred_PHQ2Class_weekly_Nof1_passiveFeatures %>%
+#   spread(learning_weeks, auc) 
+# tmp$brightenid <- NULL
+# to_keep <- apply(tmp , 1, function(x) sum(is.na(x)) / length(x)) < .50
+# tmp <- tmp[to_keep,]
+# pheatmap::pheatmap(tmp, cluster_cols = F)
 
 
 
