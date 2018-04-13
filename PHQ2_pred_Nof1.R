@@ -1,21 +1,25 @@
 rm(list=ls())
 library("install.load")
-install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("plyr", "tidyverse", "ROCR", "caret", "doMC", "scales")
+install_load("data.table", "gdata", "ggplot2", "e1071", "grid")
 install_load("ranger", "caret", "printr", "ggthemes")
 install_load("broom", "purrr", "gridExtra", "pheatmap")
-install_load("ranger", "doMC")
+install_load("ranger", "doMC", "wesanderson")
+
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("ComplexHeatmap")
+library("ComplexHeatmap")
 
 detectCores()
 registerDoMC(detectCores())
 library("synapseClient")
+
 
 #load data
 source("loadData.R")
 
 #load ML methods
 source("ML_methods.R")
-ls()
 set.seed('5645645')
 
 final_df <- FINAL_DATA_wImputedVals 
@@ -96,6 +100,28 @@ COVARIATES_COLS = c(PASSIVE_COL_NAMES, paste0(PASSIVE_COL_NAMES, '_dev'))
 # ggsave("plots/predict_PHQ2_Nof1.png", p1, width=6, height=12, dpi=100, 
 #        units="in")
 
+
+tmp_predPHQ2_function <- function(x, shuffleResponse = F){
+  to_keep <- !is.na(x$response)
+  x <- x[to_keep,]
+  
+  if(shuffleResponse ==T){
+    x$response = sample(x$response)
+  }
+  trainIds_idx <- sample(1:nrow(x), round(nrow(x)*.70))
+  train <- x[trainIds_idx,]
+  test <- x[-trainIds_idx,]
+  train <- train[, c(COVARIATES_COLS, "response")]
+  test <- test[, c(COVARIATES_COLS, "response")]
+  #Binary Response
+  if(n_distinct(train$response) == 2 & n_distinct(test$response) == 2){
+    rfFit <-  ranger(response ~ ., data=train, probability=T)
+    res <- get_bindaryPred_perf(rfFit, test)
+  } else {
+    data.frame(auc=NA)
+  }
+}
+
 #######################
 ###### Pred PHQ2 class
 #######################
@@ -105,24 +131,12 @@ pred_PHQ2Class_Nof1_passiveFeatures <- ldply(1:100, .parallel=T, .fun = function
     dplyr::group_by(brightenid) %>%
     nest() %>%
     mutate(res = purrr::map(data, function(x){
-      to_keep <- !is.na(x$response)
-      x <- x[to_keep,]
-      trainIds_idx <- sample(1:nrow(x), round(nrow(x)*.70))
-      train <- x[trainIds_idx,]
-      test <- x[-trainIds_idx,]
-      train <- train[, c(COVARIATES_COLS, "response")]
-      test <- test[, c(COVARIATES_COLS, "response")]
-      #Binary Response
-      if(n_distinct(train$response) == 2 & n_distinct(test$response) == 2){
-        rfFit <-  ranger(response ~ ., data=train, probability=T)
-        res <- get_bindaryPred_perf(rfFit, test)
-      } else {
-        data.frame(auc=NA)
-      }
+      tmp_predPHQ2_function(x, shuffleResponse = F)
     })) %>%
     dplyr::select(-data) %>%
     unnest()
 })
+
 pred_PHQ2Class_Nof1_passiveFeatures <- pred_PHQ2Class_Nof1_passiveFeatures %>% mutate(auc = 1-auc)
 median_stats <- pred_PHQ2Class_Nof1_passiveFeatures %>%
   dplyr::group_by(brightenid) %>%
@@ -158,6 +172,89 @@ ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=4, height=7, dpi=200, units
 ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=4, height=7, dpi=200, units="in")
 
 
+######################
+### Shuffled Response
+######################
+pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures <- ldply(1:100, .parallel=T, .fun = function(x){
+  final_df %>%  dplyr::mutate(response = phq2_class) %>% 
+    dplyr::select(-sum_phq2, -phq2_class) %>% 
+    dplyr::group_by(brightenid) %>%
+    nest() %>%
+    mutate(res = purrr::map(data, function(x){
+      tmp_predPHQ2_function(x, shuffleResponse = T)
+    })) %>%
+    dplyr::select(-data) %>%
+    unnest()
+})
+pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures <- pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures %>% 
+  mutate(user_id = as.character(brightenid)) %>%
+  mutate(user_id = factor(brightenid, levels=selected_user_order))
+p2 <- ggplot(data=pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures, aes(y=auc, x=user_id))
+p2 <- p2 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("test participants") +
+  ylab('AUC-ROC') + 
+  theme(axis.text = element_text(size=11),
+        axis.title.y = element_text(size = rel(1.3)),
+        axis.title.x = element_text(size = rel(1.3)),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
+p2
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.png", p2, width=4, height=7, dpi=200, units="in")
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.tiff", p2, width=4, height=7, dpi=200, units="in")
+
+
+
+#####################
+####
+
+
+table(final_df$brightenid)
+d1 <- final_df %>% filter(brightenid == 'YELLOW-00251') %>%
+  dplyr::mutate(response = phq2_class) %>% 
+  dplyr::select(-sum_phq2, -phq2_class) 
+dim(d1)
+
+
+
+get_shuffuleRes_AUC_dist <- function(test){
+  tmp <- llply(1:10000, .parallel = T, function(x){
+    tmp <- test %>% mutate(response = sample(response))
+    get_bindaryPred_perf(rfFit, tmp)
+  })
+  unlist(tmp)
+}
+
+getPerUserPvals <- llply(1:100, .parallel = T, function(x){
+  trainIds_idx <- sample(1:nrow(d1), round(nrow(d1)*.70))
+  train <- d1[trainIds_idx,]
+  test <- d1[-trainIds_idx,]
+  train <- train[, c(COVARIATES_COLS, "response")]
+  test <- test[, c(COVARIATES_COLS, "response")]
+  rfFit <-  ranger(response ~ ., data=train, probability=T)
+  res <- get_bindaryPred_perf(rfFit, test)
+  shuffledResp_AUC_dist <- get_shuffuleRes_AUC_dist(test)
+  pnorm(as.numeric(res), mean=mean(shuffledResp_AUC_dist), sd=sd(shuffledResp_AUC_dist), lower.tail = T)
+})
+
+
+trueResp_AUC_dist
+
+
+
+
+
+
+
+
+
+
+hist(1-unlist(trueResp_AUC_dist))
+
+
+
+
+
+?pnorm
+
 
 
 ############
@@ -189,8 +286,6 @@ pred_PHQ2Class_varImp <- ldply(1:100, .parallel=T, .fun = function(x){
     dplyr::select(-data) %>%
     unnest()
 })
-
-
 
 
 #Avg rank per feature per individual
@@ -233,6 +328,10 @@ pheatmap::pheatmap(avg_importanceRank_feature,
 dev.off()
 
 
+ComplexHeatmap::Heatmap(t(avg_importanceRank_feature), col = pal)
+
+
+
 pred_PHQ2Class_varImp <- pred_PHQ2Class_varImp %>% filter(!is.na(variable))
 pred_PHQ2Class_varImp$variable <- gsub('_', ' ', pred_PHQ2Class_varImp$variable)
 selected_levels <- pred_PHQ2Class_varImp %>% group_by(variable) %>% summarise(med = median(importance, na.rm=T)) %>%
@@ -246,6 +345,13 @@ p1 <- p1 + theme_bw() + xlab("passive feature type") + ylab('variable importance
         axis.title.x = element_text(size = rel(1.2)))
 ggsave("plots/predict_PHQ2Class_variableImportance.png", p1, width=6.5, height=6.5, dpi=200, units="in")
 ggsave("plots/predict_PHQ2Class_variableImportance.tiff", p1, width=6.5, height=6.5, dpi=200, units="in")
+
+
+
+
+
+###### Address reviewer comments - test w.r.t shuffled model
+
 
 
 
