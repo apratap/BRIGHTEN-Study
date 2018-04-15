@@ -11,7 +11,7 @@ install_load("ranger", "doMC", "wesanderson")
 library("ComplexHeatmap")
 
 detectCores()
-registerDoMC(detectCores())
+registerDoMC(detectCores()-3)
 library("synapseClient")
 
 
@@ -46,7 +46,7 @@ phq2_summary <- final_df %>% dplyr::group_by(brightenid) %>%
 #IGNORE users who doesnt have enough varibility
 selected_users <- phq2_summary %>% filter(iqr >= 1 & (phq2_low_class < 80 & phq2_low_class > 20 )) %>% .$brightenid
 final_df <- final_df %>% filter(brightenid %in% selected_users)
-  
+
 numData_per_user<- final_df %>% dplyr::group_by(brightenid) %>% dplyr::summarise(n = n()) 
 selected_users <- numData_per_user$brightenid[numData_per_user$n > 15]
 final_df <- final_df %>% filter(brightenid %in% selected_users)
@@ -160,7 +160,7 @@ pred_PHQ2Class_Nof1_passiveFeatures <- pred_PHQ2Class_Nof1_passiveFeatures %>%
   mutate(user_id = as.character(brightenid)) %>%
   mutate(user_id = factor(brightenid, levels=selected_user_order))
 p1 <- ggplot(data=pred_PHQ2Class_Nof1_passiveFeatures, aes(y=auc, x=user_id))
-p1 <- p1 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("test participants") +
+p1 <- p1 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("participants") +
   ylab('AUC-ROC') + 
   theme(axis.text = element_text(size=11),
         axis.title.y = element_text(size = rel(1.3)),
@@ -168,8 +168,8 @@ p1 <- p1 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw(
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
 p1
-ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=4, height=7, dpi=200, units="in")
-ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=4, height=7, dpi=200, units="in")
+ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=3, height=5, dpi=200, units="in")
+ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=3, height=5, dpi=200, units="in")
 
 
 ######################
@@ -190,72 +190,68 @@ pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures <- pred_PHQ2SHUFFLEDCLASS_Nof1_passi
   mutate(user_id = as.character(brightenid)) %>%
   mutate(user_id = factor(brightenid, levels=selected_user_order))
 p2 <- ggplot(data=pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures, aes(y=auc, x=user_id))
-p2 <- p2 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("test participants") +
+p2 <- p2 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("") +
   ylab('AUC-ROC') + 
   theme(axis.text = element_text(size=11),
-        axis.title.y = element_text(size = rel(1.3)),
-        axis.title.x = element_text(size = rel(1.3)),
+        axis.title.y = element_text(size = rel(1.2)),
+        axis.title.x = element_text(size = rel(1.2)),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
 p2
-ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.png", p2, width=4, height=7, dpi=200, units="in")
-ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.tiff", p2, width=4, height=7, dpi=200, units="in")
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.png", p2, width=3, height=5, dpi=200, units="in")
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.tiff", p2, width=3, height=5, dpi=200, units="in")
 
 
 
 #####################
-####
+####Test the significance of pred for a user based on the null model
+####################
 
-
-table(final_df$brightenid)
-d1 <- final_df %>% filter(brightenid == 'YELLOW-00251') %>%
-  dplyr::mutate(response = phq2_class) %>% 
-  dplyr::select(-sum_phq2, -phq2_class) 
-dim(d1)
-
-
-
-get_shuffuleRes_AUC_dist <- function(test){
+get_shuffuleRes_AUC_dist <- function(test, fitModel){
   tmp <- llply(1:10000, .parallel = T, function(x){
     tmp <- test %>% mutate(response = sample(response))
-    get_bindaryPred_perf(rfFit, tmp)
+    get_bindaryPred_perf(fitModel, tmp)
   })
   unlist(tmp)
 }
 
-getPerUserPvals <- llply(1:100, .parallel = T, function(x){
-  trainIds_idx <- sample(1:nrow(d1), round(nrow(d1)*.70))
-  train <- d1[trainIds_idx,]
-  test <- d1[-trainIds_idx,]
-  train <- train[, c(COVARIATES_COLS, "response")]
-  test <- test[, c(COVARIATES_COLS, "response")]
-  rfFit <-  ranger(response ~ ., data=train, probability=T)
-  res <- get_bindaryPred_perf(rfFit, test)
-  shuffledResp_AUC_dist <- get_shuffuleRes_AUC_dist(test)
-  pnorm(as.numeric(res), mean=mean(shuffledResp_AUC_dist), sd=sd(shuffledResp_AUC_dist), lower.tail = T)
-})
-
-
-trueResp_AUC_dist
-
-
-
-
-
-
-
-
-
-
-hist(1-unlist(trueResp_AUC_dist))
-
-
-
-
-
-?pnorm
-
-
+getPerUserPvals <- function(userId){
+  d1 <- final_df %>% filter(brightenid == userId) %>%
+    dplyr::mutate(response = phq2_class) %>% 
+    dplyr::select(-sum_phq2, -phq2_class) 
+  llply(1:50, .parallel = F, function(x){
+    trainIds_idx <- sample(1:nrow(d1), round(nrow(d1)*.70))
+    train <- d1[trainIds_idx,]
+    test <- d1[-trainIds_idx,]
+    train <- train[, c(COVARIATES_COLS, "response")]
+    test <- test[, c(COVARIATES_COLS, "response")]
+    if(n_distinct(train$response) == 2 & n_distinct(test$response) == 2){
+      rfFit <-  ranger(response ~ ., data=train, probability=T)
+      res <- get_bindaryPred_perf(rfFit, test)
+      shuffledResp_AUC_dist <- get_shuffuleRes_AUC_dist(test, rfFit)
+      pnorm(as.numeric(res), mean=mean(shuffledResp_AUC_dist), sd=sd(shuffledResp_AUC_dist), lower.tail = T)
+    }
+  })
+}
+### MAX COMPUTE INTENSIVE Step
+#system.time(userPVals <- llply(unique(final_df$brightenid), getPerUserPvals))
+userPVals = lapply(userPVals, function(x) log10(unlist(x)))
+names(userPVals) <- unique(final_df$brightenid)
+userPVals <- data.frame(userId = unique(final_df$brightenid)) %>% 
+  ddply(.variables =c('userId'), .fun = function(x){
+    data.frame(pvals= unlist(userPVals[[unique(x$userId)]]))
+  })
+p3 <- ggplot(data=userPVals, aes(x=factor(userId, levels=selected_user_order), y=-log10(pvals)))
+p3 <- p3 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("") +
+  ylab('-log10(p.value)') + 
+  theme(axis.text = element_text(size=11),
+        axis.title.y = element_text(size = rel(1.2)),
+        axis.title.x = element_text(size = rel(1.2)),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()) + geom_hline(yintercept = 1.30103,size=.7, color="#C0363C")
+p3
+ggsave("plots/predict_PHQ2Pval_basedonNullHyp_Nof1.png", p3, width=3, height=5, dpi=200, units="in")
+ggsave("plots/predict_PHQ2Pval_basedonNullHyp_Nof1.tiff", p3, width=3, height=5, dpi=200, units="in")
 
 ############
 # Varibale Importance
@@ -319,32 +315,31 @@ pal <- wesanderson::wes_palette("Zissou", 100, type = "continuous")
 png("plots/predict_PHQ2Class_variableImportanceRank_heatmap.png", width=6.5, height=6.5, res=200, units="in")
 pheatmap::pheatmap(avg_importanceRank_feature,
                    color = pal, border_color = NA,
-                   fontsize = 8, show_rownames=F)
+                   fontsize = 12, show_rownames=F)
 dev.off()
 tiff("plots/predict_PHQ2Class_variableImportanceRank_heatmap.tiff", width=6.5, height=6.5, res=200, units="in")
 pheatmap::pheatmap(avg_importanceRank_feature,
                    color = pal, border_color = NA,
-                   fontsize = 8, show_rownames=F)
+                   fontsize = 10, show_rownames=F)
 dev.off()
 
 
-ComplexHeatmap::Heatmap(t(avg_importanceRank_feature), col = pal)
 
 
-
-pred_PHQ2Class_varImp <- pred_PHQ2Class_varImp %>% filter(!is.na(variable))
-pred_PHQ2Class_varImp$variable <- gsub('_', ' ', pred_PHQ2Class_varImp$variable)
-selected_levels <- pred_PHQ2Class_varImp %>% group_by(variable) %>% summarise(med = median(importance, na.rm=T)) %>%
-  arrange(desc(med)) %>% .$variable %>% as.character()
-pred_PHQ2Class_varImp$variable <- factor(pred_PHQ2Class_varImp$variable, levels=rev(selected_levels))
-
-p1 <- ggplot(data=pred_PHQ2Class_varImp , aes(x=variable, y=importance)) + geom_boxplot(outlier.alpha = .5, size=.5) + coord_flip() 
-p1 <- p1 + theme_bw() + xlab("passive feature type") + ylab('variable importance (Gini index) from random forest') + 
-  theme(axis.text = element_text(size=11),
-        axis.title.y = element_text(size = rel(1.2)),
-        axis.title.x = element_text(size = rel(1.2)))
-ggsave("plots/predict_PHQ2Class_variableImportance.png", p1, width=6.5, height=6.5, dpi=200, units="in")
-ggsave("plots/predict_PHQ2Class_variableImportance.tiff", p1, width=6.5, height=6.5, dpi=200, units="in")
+# 
+# pred_PHQ2Class_varImp <- pred_PHQ2Class_varImp %>% filter(!is.na(variable))
+# pred_PHQ2Class_varImp$variable <- gsub('_', ' ', pred_PHQ2Class_varImp$variable)
+# selected_levels <- pred_PHQ2Class_varImp %>% group_by(variable) %>% summarise(med = median(importance, na.rm=T)) %>%
+#   arrange(desc(med)) %>% .$variable %>% as.character()
+# pred_PHQ2Class_varImp$variable <- factor(pred_PHQ2Class_varImp$variable, levels=rev(selected_levels))
+# 
+# p1 <- ggplot(data=pred_PHQ2Class_varImp , aes(x=variable, y=importance)) + geom_boxplot(outlier.alpha = .5, size=.5) + coord_flip() 
+# p1 <- p1 + theme_bw() + xlab("passive feature type") + ylab('variable importance (Gini index) from random forest') + 
+#   theme(axis.text = element_text(size=11),
+#         axis.title.y = element_text(size = rel(1.2)),
+#         axis.title.x = element_text(size = rel(1.2)))
+# ggsave("plots/predict_PHQ2Class_variableImportance.png", p1, width=6.5, height=6.5, dpi=200, units="in")
+# ggsave("plots/predict_PHQ2Class_variableImportance.tiff", p1, width=6.5, height=6.5, dpi=200, units="in")
 
 
 
