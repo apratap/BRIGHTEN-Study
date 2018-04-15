@@ -2,7 +2,7 @@ rm(list=ls())
 library("install.load")
 install_load("data.table", "gdata", "ggplot2", "ggthemes", "circlize")
 install_load("plyr", "tidyverse", "doMC", "scales", "corrplot")
-install_load("pheatmap", "RColorBrewer", "wesanderson")
+install_load("pheatmap", "RColorBrewer", "wesanderson", "viridis")
 install_load("ggpubr")
 #load data
 source("loadData.R")

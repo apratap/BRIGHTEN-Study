@@ -1,9 +1,9 @@
 rm(list=ls())
 library("install.load")
-install_load("data.table", "gdata", "synapseClient")
+install_load("data.table", "gdata")
 install_load("plyr", "tidyverse", "doMC", "scales")
 install_load("gridExtra", "pheatmap", "printr", "ggthemes")
-
+library("synapseClient")
 synapseLogin()
 
 #Hardcoded PASSIVE Features
