@@ -327,7 +327,12 @@ dev.off()
 save.image("201804014_reviewerFeedback.RData")
 synStore(synapseClient::File("201804014_reviewerFeedback.RData", parentId = 'syn12138049'), 
          executed="https://github.com/apratap/BRIGHTEN-Study/blob/master/PHQ2_pred_Nof1.R")
-# 
+
+
+
+load(synGet("syn12138050")@filePath)
+userPVals %>% group_by(userId) %>% dplyr::summarise(medPval = median(pvals, na.rm=T)) %>% filter(medPval < .05)
+
 # pred_PHQ2Class_varImp <- pred_PHQ2Class_varImp %>% filter(!is.na(variable))
 # pred_PHQ2Class_varImp$variable <- gsub('_', ' ', pred_PHQ2Class_varImp$variable)
 # selected_levels <- pred_PHQ2Class_varImp %>% group_by(variable) %>% summarise(med = median(importance, na.rm=T)) %>%
