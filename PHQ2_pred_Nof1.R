@@ -149,7 +149,6 @@ dim(median_stats %>% filter(medVal > .5))
 
 dim(median_stats %>% filter(medVal > .8))
 
-
 selected_user_order <- pred_PHQ2Class_Nof1_passiveFeatures %>%
   dplyr::group_by(brightenid) %>%
   dplyr::summarise(medVal = median(auc, na.rm=T)) %>% dplyr::filter(!is.na(medVal)) %>%
@@ -161,15 +160,14 @@ pred_PHQ2Class_Nof1_passiveFeatures <- pred_PHQ2Class_Nof1_passiveFeatures %>%
   mutate(user_id = factor(brightenid, levels=selected_user_order))
 p1 <- ggplot(data=pred_PHQ2Class_Nof1_passiveFeatures, aes(y=auc, x=user_id))
 p1 <- p1 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("participants") +
-  ylab('AUC-ROC') + 
+  ylab('AUC') + 
   theme(axis.text = element_text(size=11),
         axis.title.y = element_text(size = rel(1.3)),
         axis.title.x = element_text(size = rel(1.3)),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
-p1
-ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=3, height=5, dpi=200, units="in")
-ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=3, height=5, dpi=200, units="in")
+ggsave("plots/predict_PHQ2Class_Nof1.png", p1, width=3, height=5, dpi=600, units="in")
+ggsave("plots/predict_PHQ2Class_Nof1.tiff", p1, width=3, height=5, dpi=600, units="in")
 
 
 ######################
@@ -191,15 +189,14 @@ pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures <- pred_PHQ2SHUFFLEDCLASS_Nof1_passi
   mutate(user_id = factor(brightenid, levels=selected_user_order))
 p2 <- ggplot(data=pred_PHQ2SHUFFLEDCLASS_Nof1_passiveFeatures, aes(y=auc, x=user_id))
 p2 <- p2 + geom_boxplot(size=.5, outlier.alpha = 0.3) + coord_flip() + theme_bw() + xlab("") +
-  ylab('AUC-ROC') + 
+  ylab('AUC') + 
   theme(axis.text = element_text(size=11),
         axis.title.y = element_text(size = rel(1.2)),
         axis.title.x = element_text(size = rel(1.2)),
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()) + geom_hline(yintercept = .5,size=.7, color="#C0363C")
-p2
-ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.png", p2, width=3, height=5, dpi=200, units="in")
-ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.tiff", p2, width=3, height=5, dpi=200, units="in")
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.png", p2, width=3, height=5, dpi=600, units="in")
+ggsave("plots/predict_PHQ2SHUFFLEDClass_Nof1.tiff", p2, width=3, height=5, dpi=600, units="in")
 
 
 
