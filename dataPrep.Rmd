@@ -28,14 +28,18 @@ knitr::opts_chunk$set(comment = NA, results = "asis", comment = NA, tidy = F)
 ```{r}
 #PHQ9
 phq9 <- read.xls(synGet('syn10250492')@filePath)
-phq9 <- phq9 %>% mutate(phq10 = as.numeric(  as.character(plyr::revalue(phdis, replace=c('Not difficult at all' = 0, 'Somewhat difficult' = 1, 'Very difficult' = 2,
-          'Extremely difficult'=3))))) %>%
+phq9 <- phq9 %>% 
+  mutate(phq10 = as.numeric( as.character(plyr::revalue(phdis, 
+                             replace=c('Not difficult at all' = 0, 'Somewhat difficult' = 1,
+                                       'Very difficult' = 2, 'Extremely difficult'=3))))) %>%
   mutate(sum_phq9 = phq9, start =lubridate::ymd(start)) %>% 
   mutate(sum_phq10 = sum_phq9 + phq10,
+         response_local = lubridate::ymd_hms(response_local),
          study_arm = gsub('-.*','',brightenid),
          user_id = paste0('uid', user_id),
-         phq9ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% select(user_id, brightenid, study_arm, start, week, phq9ResponseTimeSecs, sum_phq9, sum_phq10)
-
+         phq9ResponseTimeSecs = as.numeric(lubridate::ymd_hms(response_utc) - lubridate::ymd_hms(sent_time_utc))) %>% 
+  select(user_id, brightenid, response_local, study_arm, start, 
+         week, phq9ResponseTimeSecs,ph1, ph2, ph3, ph4, ph5, ph6, ph7, ph8, ph9, sum_phq9, sum_phq10)
 
 #PHQ2
 phq2 <- read.xls(synGet('syn10250486')@filePath)
@@ -107,6 +111,13 @@ study_metadata <- study_metadata %>%
   dplyr::mutate(brightenid = as.character(brightenid),
                 baseline_phq9 = PHQScore) %>%
   dplyr::select(-c(21:27, 36:43), -PHQScore)
+
+
+#use this file to merge the itemwise baseline PHQ-9 scores
+study_metadata_2 <- read.xls(synGet('syn12596975')@filePath) %>%
+  dplyr::select(id, ph1, ph2, ph3, ph4, ph5, ph6, ph7, ph8, ph9) %>%
+  dplyr::mutate(brightenid = id) %>% dplyr::select(-id)
+study_metadata <- merge(study_metadata, study_metadata_2, all.x=T)
 
 # extract master table user_id to brightenid
 userId_to_brigthenId <- rbind(phq9 %>% select(user_id, brightenid), 
