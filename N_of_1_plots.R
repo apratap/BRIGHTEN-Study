@@ -101,5 +101,5 @@ n_1_plots <- function(id, xintercept = NA){
 
 id <- "YELLOW-00154"
 tmp_p <- n_1_plots(id, xintercept = 52)
-ggsave("plots/Nof1_YELLOW-00154.png", tmp_p, width=8, height=8, dpi=200, units="in")
-ggsave("plots/Nof1_YELLOW-00154.tiff", tmp_p, width=8, height=8, dpi=200, units="in")
+ggsave("plots/Nof1_YELLOW-00154.png", tmp_p, width=8, height=8, dpi=500, units="in")
+ggsave("plots/Nof1_YELLOW-00154.tiff", tmp_p, width=8, height=8, dpi=500, units="in")

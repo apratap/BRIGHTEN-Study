@@ -60,7 +60,7 @@ p3_CASE_3_DIRECTIONAL_CHANGE <- lapply(CASE_3_DIRECTIONAL_CHANGE, function(id){
 })
 p3 <- grid.arrange(grobs = p3_CASE_3_DIRECTIONAL_CHANGE, ncol=2, top="directional change over time" )
 p <- grid.arrange(p1, p2, p3)
-ggsave(filename = "plots/PHQ2_recordings_N.png", p,  width=6.5, height =6.5, dpi=200)
-ggsave(filename = "plots/PHQ2_recordings_N.tiff", p,  width=6.5, height =6.5, dpi=200)
+ggsave(filename = "plots/PHQ2_recordings_N.png", p,  width=6.5, height =6.5, dpi=500)
+ggsave(filename = "plots/PHQ2_recordings_N.tiff", p,  width=6.5, height =6.5, dpi=500)
 
 

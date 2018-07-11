@@ -146,5 +146,5 @@ p5 <- tmp_hist_plot("mobility", binwidth = .1) + xlab('Mobility (miles)')
 p6 <- tmp_hist_plot('mobility_radius', binwidth=1) + xlab('Mobility radius (miles)')
 p7 <- gridExtra::grid.arrange(p1,p2,p3,p4,p5,p6, ncol=2)
 ggsave("plots/feature_histograms.png", p7, width=4, height=4, units="in", dpi=300)
-ggsave("plots/feature_histograms.tiff", p7, width=4, height=4, units="in", dpi=300)
+ggsave("plots/feature_histograms.tiff", p7, width=5, height=5, units="in", dpi=600)
 
